@@ -176,6 +176,98 @@ test('readout rows contain only toggles and metadata; ordinary rows retain contr
   }
 });
 
+test('a key-required row offers ADD KEY only while a Provider Settings opener is attached', async () => {
+  const { LayerPanel } = await import('./layerPanel.js');
+  const { railFixture } = await import('./railTestFixture.mjs');
+  const f = railFixture();
+  const previousDocument = globalThis.document;
+  globalThis.document = f.document;
+  const fires = {
+    id: 'local-firms',
+    name: 'FIRMS Active Fires',
+    icon: '*',
+    source: 'NASA FIRMS',
+    enabled: true,
+    showInTogglePanel: true,
+    requiresKeyId: 'firms',
+    stats: { keyRequired: true, error: 'KEY REQUIRED' },
+  };
+  const quakes = {
+    id: 'earthquakes',
+    name: 'Earthquakes',
+    icon: '*',
+    source: 'USGS',
+    enabled: true,
+    showInTogglePanel: true,
+    stats: {},
+  };
+  const opened = [];
+  const options = {
+    getLayers: () => [fires, quakes],
+    isEnabled: () => true,
+    setEnabled() {},
+    setLayerParams() {},
+    hasRowControls: () => false,
+    subscribeRowControls() {},
+    getRowControls: () => null,
+  };
+  const chipOf = (id, fixture = f) =>
+    fixture
+      .find((n) => n.dataset.layerId === id)
+      .querySelector('.data-key-chip');
+  const withoutOpener = new LayerPanel(options);
+  const panel = new LayerPanel({
+    ...options,
+    openKeySetup: (request) => opened.push(request),
+  });
+  try {
+    const bare = railFixture();
+    withoutOpener.mount(bare.container);
+    assert.equal(
+      chipOf('local-firms', bare),
+      null,
+      'no opener, no dead button',
+    );
+    withoutOpener.destroy();
+
+    panel.mount(f.container);
+    const chip = chipOf('local-firms');
+    assert.ok(chip, 'the key-required row renders the chip');
+    assert.equal(chip.textContent, 'ADD KEY');
+    assert.equal(chip.className, 'data-toggle-chip data-key-chip');
+    assert.match(chip.getAttribute('aria-label'), /FIRMS_MAP_KEY/);
+    assert.match(chip.getAttribute('aria-label'), /Active Fires/);
+    assert.equal(chipOf('earthquakes'), null, 'a keyless row has none');
+    const right = chip.parent;
+    assert.ok(
+      right.children.indexOf(chip) <
+        right.children.indexOf(right.querySelector('.data-toggle-btn')),
+      'the chip sits in the row controls before the toggle',
+    );
+    chip.click();
+    assert.deepEqual(opened, [{ focusKey: 'firms' }]);
+
+    // The key arrives: the chip leaves on refresh without a rebuild.
+    fires.stats = { count: 12 };
+    panel._refreshTogglePanel();
+    assert.equal(chipOf('local-firms'), null);
+    fires.stats = { keyRequired: true };
+    panel._refreshTogglePanel();
+    assert.ok(chipOf('local-firms'), 'and returns when the key goes missing');
+
+    // Withdrawing the opener (teardown) removes every chip in place.
+    panel.attachKeySetup(null);
+    assert.equal(chipOf('local-firms'), null);
+    panel.attachKeySetup((request) => opened.push(request));
+    chipOf('local-firms').click();
+    assert.deepEqual(opened.at(-1), { focusKey: 'firms' });
+  } finally {
+    panel.destroy();
+    withoutOpener.destroy();
+    globalThis.document = previousDocument;
+  }
+});
+
 test('the Recent Imagery readout mounts in its rail body like the weather readout and is rebuilt or released with the panel', async () => {
   const { LayerPanel } = await import('./layerPanel.js');
   const { railFixture } = await import('./railTestFixture.mjs');

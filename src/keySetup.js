@@ -253,15 +253,30 @@ export async function initKeySetup({
     onEscape: () => close(),
   });
 
-  const openDialog = () => {
+  // The field for one registry key (`focusKey` is a key id such as `firms`,
+  // or an env var such as FIRMS_MAP_KEY); the first field otherwise. Ids are
+  // slugs and env vars are identifiers, so anything else is not looked up.
+  const fieldFor = (focusKey) => {
+    const key = typeof focusKey === 'string' ? focusKey.trim() : '';
+    if (!/^[\w-]+$/.test(key)) return null;
+    return (
+      root.querySelector(`[data-key-id="${key}"] input[data-env-var]`) ||
+      root.querySelector(`input[data-env-var="${key}"]`)
+    );
+  };
+
+  const openDialog = (options) => {
     if (disposed || open) return;
     open = true;
+    const focusKey = options?.focusKey;
     keyboard.activate();
     root.hidden = false;
     globalThis.requestAnimationFrame?.(() => {
       if (!open) return;
       root.classList.add('visible');
-      root.querySelector('input')?.focus?.({ preventScroll: true });
+      (fieldFor(focusKey) || root.querySelector('input'))?.focus?.({
+        preventScroll: true,
+      });
     });
   };
 
@@ -358,7 +373,8 @@ export async function initKeySetup({
     await submitUpdates(updates, 'Saved to');
   };
 
-  chip.addEventListener('click', openDialog);
+  const onChipClick = () => openDialog();
+  chip.addEventListener('click', onChipClick);
   closeButton?.addEventListener('click', close);
   applyButton?.addEventListener('click', onApply);
   // Remove buttons are rendered per row; delegate so re-renders stay wired.
@@ -402,7 +418,7 @@ export async function initKeySetup({
   disposeControls = () => {
     open = false;
     keyboard.destroy();
-    chip.removeEventListener('click', openDialog);
+    chip.removeEventListener('click', onChipClick);
     closeButton?.removeEventListener('click', close);
     applyButton?.removeEventListener('click', onApply);
   };

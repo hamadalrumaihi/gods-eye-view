@@ -97,3 +97,107 @@ test('aborting pending setup removes its surface and ignores a late response', a
   resolveResponse({ ok: true, json: async () => ({ keys: [] }) });
   assert.equal(await pending, null);
 });
+
+/** A small element tree with the attribute selectors the dialog uses. */
+function miniDom() {
+  const matchSimple = (node, simple) => {
+    const tag = simple.match(/^[a-z]+/)?.[0];
+    if (tag && node.tagName !== tag.toUpperCase()) return false;
+    for (const [, name, , value] of simple.matchAll(/\[([\w-]+)(="([^"]*)")?\]/g)) {
+      const actual = node.attributes.get(name);
+      if (actual === undefined) return false;
+      if (value !== undefined && actual !== value) return false;
+    }
+    return true;
+  };
+  const matches = (node, selector) => {
+    const parts = selector.trim().split(/\s+/);
+    if (!matchSimple(node, parts.at(-1))) return false;
+    if (parts.length === 1) return true;
+    for (let p = node.parentNode; p; p = p.parentNode)
+      if (matchSimple(p, parts[0])) return true;
+    return false;
+  };
+  const all = (root, predicate, out = []) => {
+    for (const child of root.children) {
+      if (predicate(child)) out.push(child);
+      all(child, predicate, out);
+    }
+    return out;
+  };
+  const document = Object.assign(new EventTarget(), { activeElement: null });
+  const camel = (name) => name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const kebab = (name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+  document.createElement = (tag) => {
+    const classes = new Set();
+    const node = Object.assign(new EventTarget(), {
+      tagName: tag.toUpperCase(),
+      attributes: new Map(),
+      children: [],
+      parentNode: null,
+      textContent: '',
+      hidden: false,
+      isConnected: true,
+      focus() { document.activeElement = this; },
+      setAttribute(name, value) { this.attributes.set(name, String(value)); },
+      append(...nodes) { for (const child of nodes) { child.parentNode = this; this.children.push(child); } },
+      remove() {},
+      querySelector(selector) { return all(this, (n) => matches(n, selector))[0] || null; },
+      querySelectorAll(selector) { return all(this, (n) => matches(n, selector)); },
+      getClientRects: () => [{}],
+      classList: {
+        add: (...names) => names.forEach((n) => classes.add(n)),
+        remove: (...names) => names.forEach((n) => classes.delete(n)),
+        contains: (n) => classes.has(n),
+      },
+    });
+    node.dataset = new Proxy({}, {
+      set(_, key, value) { node.attributes.set(`data-${kebab(key)}`, String(value)); return true; },
+      get(_, key) { return node.attributes.get(`data-${kebab(String(key))}`); },
+    });
+    void camel;
+    return node;
+  };
+  return document;
+}
+
+test('open({ focusKey }) lands on the named key field after render; a plain open keeps the first field', async () => {
+  const { initKeySetup } = await import('./keySetup.js');
+  const document = miniDom();
+  const chip = document.createElement('button');
+  const label = document.createElement('span');
+  label.setAttribute('data-key-setup-chip-label', '');
+  chip.append(label);
+  const root = document.createElement('aside');
+  const rows = document.createElement('div');
+  rows.setAttribute('data-key-setup-rows', '');
+  root.append(rows);
+  document.getElementById = (id) => (id === 'key-setup-chip' ? chip : id === 'key-setup' ? root : null);
+  const priorRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = (fn) => fn();
+  try {
+    const keys = [
+      { id: 'google-maps', title: 'Google', tier: 'metered', envVars: ['GOOGLE_MAPS_API_KEY'], getUrl: 'https://g', unlocks: 'planet' },
+      { id: 'firms', title: 'FIRMS', tier: 'free', envVars: ['FIRMS_MAP_KEY'], getUrl: 'https://f', unlocks: 'fires' },
+    ];
+    const settings = await initKeySetup({
+      documentRef: document,
+      fetchImpl: async () => ({ ok: true, json: async () => ({ keys, total: 2, setCount: 0 }) }),
+    });
+    assert.ok(settings, 'the surface exists under a loopback dev server');
+    settings.open({ focusKey: 'firms' });
+    assert.equal(document.activeElement?.attributes.get('data-env-var'), 'FIRMS_MAP_KEY');
+    settings.close();
+    settings.open({ focusKey: 'GOOGLE_MAPS_API_KEY' });
+    assert.equal(document.activeElement?.attributes.get('data-env-var'), 'GOOGLE_MAPS_API_KEY', 'an env var name resolves too');
+    settings.close();
+    settings.open({ focusKey: 'nope"] , *' });
+    assert.equal(document.activeElement?.attributes.get('data-env-var'), 'GOOGLE_MAPS_API_KEY', 'an unknown or unsafe key falls back to the first field');
+    settings.close();
+    settings.open();
+    assert.equal(document.activeElement?.attributes.get('data-env-var'), 'GOOGLE_MAPS_API_KEY');
+    settings.destroy();
+  } finally {
+    globalThis.requestAnimationFrame = priorRaf;
+  }
+});

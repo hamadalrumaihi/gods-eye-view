@@ -773,6 +773,14 @@
   background: var(--accent-dim);
 }
 
+/* ADD KEY beside a toggle a missing provider key holds back: the next step,
+   not a state, so it reads as a call to action rather than an active chip. */
+.data-key-chip {
+  color: var(--accent);
+  border-color: rgba(0, 212, 255, 0.45);
+  white-space: nowrap;
+}
+
 /* Async sub-controls: a chip must never read ACTIVE before the data it turns
    on actually exists, so loading and failure are their own visible states. */
 .data-toggle-chip:disabled {
