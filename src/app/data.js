@@ -13,6 +13,16 @@ export function createApplicationData({
   // Initialize data layer manager
   const dataManager = new LayerLifecycle(viewer, {
     allowQaRegistration,
+    // Periodic polling pauses while the tab is hidden, like the render loop
+    // (tools.js); each enabled layer refreshes once on return. The portable
+    // lifecycle module receives the document through this seam.
+    visibility: {
+      isHidden: () => document.hidden === true,
+      subscribe(callback) {
+        document.addEventListener('visibilitychange', callback);
+        return () => document.removeEventListener('visibilitychange', callback);
+      },
+    },
   });
   defer(async () => {
     await dataManager.destroyAll();
