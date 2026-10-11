@@ -324,7 +324,9 @@ test('earthquake refresh reports failure and clears it only after a successful r
     layer.init(viewer);
     layer.enable(viewer);
     globalThis.fetch = async () => ({ ok: false, status: 503 });
-    assert.equal(await layer.update(viewer), false);
+    // A failed fetch is a stats error, not a rejected lifecycle transition:
+    // false would make the manager revert the toggle whenever USGS is down.
+    assert.equal(await layer.update(viewer), true);
     assert.equal(layer.getStats().error, 'USGS HTTP 503');
 
     globalThis.fetch = async () => ({
@@ -364,7 +366,7 @@ test('malformed earthquake refresh preserves entities, overlays, count and times
       const bad = { ...good, id: 'bad-properties', properties };
       for (const features of [[bad], [good, bad]]) {
         respond(features);
-        assert.equal(await layer.update(viewer), false);
+        assert.equal(await layer.update(viewer), true);
         assert.equal(dataSources[0].entities.values.length, 1);
         assert.equal(dataSources[0].entities.values[0], entity);
         assert.equal(layer.getStats().count, stats.count);
@@ -381,7 +383,7 @@ test('malformed earthquake refresh preserves entities, overlays, count and times
       { ...good, properties: { mag: '4' } },
       { ...good, properties: { mag: Infinity } }, good]) {
       respond([good, bad]);
-      assert.equal(await layer.update(viewer), false);
+      assert.equal(await layer.update(viewer), true);
       assert.equal(dataSources[0].entities.values.length, 1);
       assert.equal(dataSources[0].entities.values[0], entity);
       assert.equal(layer.getStats().count, stats.count);

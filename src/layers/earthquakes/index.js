@@ -155,7 +155,10 @@ export function createEarthquakesLayer({ source, overlayHost } = {}) {
           return false;
         console.warn('[Data:Earthquakes] Fetch error:', e);
         _lastError = e?.message || 'Earthquake source unavailable';
-        return false;
+        // A failed fetch is a refresh error surfaced through getStats(), not a
+        // rejected lifecycle transition: returning false here would make the
+        // manager revert the toggle whenever USGS is down.
+        return true;
       } finally {
         if (_request === request) _request = null;
       }

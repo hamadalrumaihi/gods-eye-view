@@ -59,6 +59,23 @@ function cancelPendingLayerRestore(entry, origin, reason) {
   }
 }
 
+const DEV_RUNTIME = import.meta.env?.DEV === true;
+
+/**
+ * Dev-only contract check. `update()` returning false means "reject this
+ * lifecycle transition", not "the fetch failed". A layer that also reports an
+ * error through getStats() almost certainly meant the latter, and should
+ * return true with the failure in its stats instead (see cyclones).
+ */
+function warnRejectedUpdateWithError(layerId, stats) {
+  if (!DEV_RUNTIME) return;
+  if (!stats?.error && !stats?.lastError) return;
+  console.warn(
+    `[Data] ${layerId} update() returned false while getStats() reports an error; ` +
+      'false rejects the lifecycle transition — return true and expose the failure through getStats() instead',
+  );
+}
+
 function refreshFailureFromStats(stats, label) {
   const specific = stats?.error || stats?.lastError;
   if (specific)
@@ -284,13 +301,13 @@ export class LayerLifecycle {
       // Even a rejected/partial update may have changed the data exposed by
       // the layer. Publish before classifying its result so observers see it.
       this._publishActivity({ type: 'data-updated', layerId });
-      if (result === false)
+      const stats = this._moduleStats(entry);
+      if (result === false) {
         failure = lifecycleRejectedError(layerId, 'refresh');
+        warnRejectedUpdateWithError(layerId, stats);
+      }
       if (!failure)
-        failure = refreshFailureFromStats(
-          this._moduleStats(entry),
-          entry.module.name || layerId,
-        );
+        failure = refreshFailureFromStats(stats, entry.module.name || layerId);
     } catch (error) {
       failure = error;
     }
@@ -516,6 +533,17 @@ export class LayerLifecycle {
     }
   }
 
+  /**
+   * Arm the manager-owned refresh loop for a settled-enabled layer.
+   *
+   * Return contract for `module.update()`: `false` means "reject the lifecycle
+   * transition" (the enable transaction reverts through disable(), a periodic
+   * tick publishes `refresh-failed`); it does not mean "the fetch failed". A
+   * layer whose source is unavailable keeps its lifecycle settled by returning
+   * `true` and exposing the failure through `getStats().error`, which the loop
+   * surfaces as `managerRefreshError`. Only aborted, superseded or
+   * already-disabled updates return `false`.
+   */
   _armUpdateLoop(layerId, entry) {
     const configuredRefreshInterval = Number(entry.module.refreshInterval);
     const updateInterval = Number(entry.module.updateInterval);
@@ -995,7 +1023,10 @@ export class LayerLifecycle {
       this._setVisibilityIntentPhase(entry, intentEpoch, 'update');
       try {
         const updated = await entry.module.update(this.viewer, { signal });
-        if (updated === false) throw lifecycleRejectedError(layerId, 'update');
+        if (updated === false) {
+          warnRejectedUpdateWithError(layerId, this._moduleStats(entry));
+          throw lifecycleRejectedError(layerId, 'update');
+        }
       } catch (e) {
         if (signal?.aborted || isAbortError(e)) {
           return finishCancelledEnable(

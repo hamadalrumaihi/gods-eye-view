@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createEarthquakesLayer } from './index.js';
 import { createUsgsEarthquakeSource } from './source.js';
-function harness(source) {
+import { LayerLifecycle } from '../../data/lifecycle.js';
+function harness(source, { start = true } = {}) {
   const sources = [];
   const events = [];
   const viewer = {
@@ -25,10 +26,33 @@ function harness(source) {
       clearSource() {},
     },
   });
-  layer.init(viewer);
-  layer.enable(viewer);
+  if (start) {
+    layer.init(viewer);
+    layer.enable(viewer);
+  }
   return { layer, viewer, sources, events };
 }
+test('a failing USGS fetch keeps the enabled layer on and reports the error', async () => {
+  const h = harness(
+    {
+      getSnapshot: async () => {
+        throw new Error('USGS HTTP 503');
+      },
+    },
+    { start: false },
+  );
+  const manager = new LayerLifecycle(h.viewer);
+  manager.register(h.layer);
+  const changes = [];
+  manager.subscribe((change) => changes.push(change.type));
+  assert.equal(await manager.setEnabled('earthquakes', true), true);
+  assert.equal(manager.isEnabled('earthquakes'), true);
+  assert.equal(h.layer.getStats().error, 'USGS HTTP 503');
+  assert.equal(h.layer.getStats().count, 0);
+  assert.equal(changes.includes('visibility-failed'), false);
+  await manager.destroyAll();
+  assert.equal(h.sources.length, 0);
+});
 const row = {
   stableId: 'event-a',
   usgsId: 'event-a',
