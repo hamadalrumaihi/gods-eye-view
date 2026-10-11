@@ -157,12 +157,16 @@ for (const preview of [false, true]) {
     assert.equal((await request(search, '?lat=30&lon=-97')).statusCode, 400);
     assert.equal((await request(nearby, '?lat=bad&lon=-97')).statusCode, 400);
     assert.equal((await request(nearby, '', 'POST')).statusCode, 405);
+    // The upstream's own wording stays in the server log, never in the body.
+    t.mock.method(console, 'warn', () => {});
     t.mock.method(globalThis, 'fetch', async () =>
       Response.json({ error: { message: 'Denied' } }, { status: 403 }),
     );
-    assert.deepEqual((await request(search, '?q=museum&lat=30&lon=-97')).body, {
+    const denied = await request(search, '?q=museum&lat=30&lon=-97');
+    assert.equal(denied.statusCode, 403);
+    assert.deepEqual(denied.body, {
       places: [],
-      error: 'Denied',
+      error: 'Google Places request failed',
     });
   });
 }
