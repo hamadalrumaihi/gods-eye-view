@@ -2819,8 +2819,28 @@ function awarenessSubjectHarness({ subject, flights = [], military = [] }) {
   };
 }
 
+let awarenessLayer = null;
+/** One Contacts layer bound to the default layer instances, built once per process. */
+async function awarenessUnderTest() {
+  if (awarenessLayer) return awarenessLayer;
+  const [{ createApplicationAwareness }, flights, military, vessels, installations] = await Promise.all([
+    import('../app/layers/militaryAwareness.js'),
+    import('../data/flights.js'),
+    import('../data/militaryFlights.js'),
+    import('../data/aisLiveVessels.js'),
+    import('../data/militaryInstallations.js'),
+  ]);
+  awarenessLayer = createApplicationAwareness({
+    flights: flights.default,
+    military: military.default,
+    vessels: vessels.default,
+    installations: installations.default,
+  });
+  return awarenessLayer;
+}
+
 async function withAwareness(harness, run) {
-  const awareness = (await import('../data/militaryAwareness.js')).default;
+  const awareness = await awarenessUnderTest();
   const flightsLayer = (await import('../data/flights.js')).default;
   const militaryLayer = (await import('../data/militaryFlights.js')).default;
   const originals = {
@@ -2907,7 +2927,7 @@ test('front5: a nearby ask centres on the Contacts SUBJECT, not the selected dat
 
 test('front5: the spoken count and the panel window are ONE number by construction', async () => {
   globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
-  const { collectAircraftProximityWindow } = await import('../data/militaryAwareness.js');
+  const { collectAircraftProximityWindow } = await awarenessUnderTest();
   const harness = awarenessSubjectHarness({
     subject: { id: 'a1b2c3', label: 'N546PC' },
     flights: Array.from({ length: 111 }, (_, i) => ({ id: `F${i}`, icao24: `f${i}` })),

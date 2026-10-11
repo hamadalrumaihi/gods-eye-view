@@ -30,9 +30,19 @@ import militaryFlightsLayer, {
   _setTrackedMilitaryRefreshStateForTest,
   mapAnalystRecord as mapMilitaryAnalystRecord,
 } from './militaryFlights.js';
-import { findCompatibleHistoryIndex } from './militaryAwareness.js';
+import aisLiveVesselsLayer from './aisLiveVessels.js';
+import militaryInstallationsLayer from './militaryInstallations.js';
+import { createApplicationAwareness } from '../app/layers/militaryAwareness.js';
 import { createGevActionRunner } from '../voice/gevActions.js';
 import { ANALYST_LAYERS, createAnalystEngine } from './analystEngine.js';
+
+// The navigation filter matcher lives on a Contacts layer bound to the default instances.
+const { findCompatibleHistoryIndex } = createApplicationAwareness({
+  flights: flightsLayer,
+  military: militaryFlightsLayer,
+  vessels: aisLiveVesselsLayer,
+  installations: militaryInstallationsLayer,
+});
 
 /** Strip block and line comments so source pins scan CODE, not prose. */
 function stripComments(source) {

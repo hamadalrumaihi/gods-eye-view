@@ -2,9 +2,9 @@
  * @file Pure tile math + budget accounting for the TomTom traffic-flow proxy.
  *
  * Shared by the `/api/tomtom` vite plugin (server-side: coordinate validation,
- * daily budget governor) and `src/data/flowTiles.js` (client-side: which tiles
- * cover the current traffic fetch bounds). Zero dependencies, Cesium-free, so
- * both sides can unit-test against it with node:test.
+ * daily budget governor) and `src/layers/traffic/flowSource.js` (client-side:
+ * which tiles cover the current traffic fetch bounds). Zero dependencies,
+ * Cesium-free, so both sides can unit-test against it with node:test.
  *
  * Slippy scheme: standard Web Mercator XYZ, y grows southward
  * (https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames) — the scheme
