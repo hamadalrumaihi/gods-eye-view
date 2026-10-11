@@ -390,7 +390,11 @@ test('an oversized debug-log request receives the fixed error response', async (
 
   const response = await fetch(
     `http://127.0.0.1:${server.address().port}/api/realtime/debug-log`,
-    { method: 'POST', body: 'x'.repeat(8 * 1024 * 1024 + 1) },
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'x'.repeat(8 * 1024 * 1024 + 1),
+    },
   );
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {

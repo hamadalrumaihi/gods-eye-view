@@ -18,11 +18,6 @@ function openAiRealtimeProxy({
     middlewares.use('/api/openai/hud-summary', handleHudSummary);
 
     middlewares.use(
-      '/api/realtime/debug-log',
-      createDebugLogHandler({ sourceRoot }),
-    );
-
-    middlewares.use(
       '/api/realtime/token',
       createRealtimeTokenHandler({ ...realtime, annotationGuidance }),
     );
@@ -32,6 +27,13 @@ function openAiRealtimeProxy({
     name: 'openai-realtime-proxy',
     configureServer(server) {
       install(server.middlewares);
+      // The conversation log is a development diagnostic that writes to the
+      // checkout (.gev-logs/). Like Provider Settings it exists only under the
+      // dev server; a preview build never accepts writes to its own tree.
+      server.middlewares.use(
+        '/api/realtime/debug-log',
+        createDebugLogHandler({ sourceRoot }),
+      );
     },
     configurePreviewServer(server) {
       install(server.middlewares);
