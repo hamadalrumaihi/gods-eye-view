@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
+import { createLruCache } from '../common/cache.js';
 import { celestrakTleUrl } from '../../../src/data/spaceProviderRequests.js';
 
 /**
@@ -25,6 +26,11 @@ export function celestrakProxy() {
   const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
   const mem = new Map(); // group -> { at: epochMs, body: string }
   const inflight = new Map(); // group -> Promise<{at, body}|null>
+  // Groups are client-chosen, so an unknown or failing name must not reach
+  // CelesTrak on every request: a failed refresh parks the group here and the
+  // next minute of requests is answered from cache (or refused) locally.
+  const FAILED_TTL_MS = 60_000;
+  const failed = createLruCache({ max: 256, ttlMs: FAILED_TTL_MS });
 
   const diskPath = (group) => path.join(CACHE_DIR, `celestrak-${group}.json`);
 
@@ -98,8 +104,9 @@ export function celestrakProxy() {
           send(200, entry.body, 'HIT');
           return;
         }
-        // Stale or missing → refresh, single-flight per group.
-        if (!inflight.has(group)) {
+        // Stale or missing → refresh, single-flight per group, unless the
+        // group failed within the last minute (negative cache).
+        if (!inflight.has(group) && !failed.has(group)) {
           inflight.set(
             group,
             fetchUpstream(group)
@@ -109,6 +116,7 @@ export function celestrakProxy() {
                 return fresh;
               })
               .catch((err) => {
+                failed.set(group, true);
                 console.warn(
                   '[celestrak-proxy] refresh failed — serving cache if any',
                 );
@@ -117,7 +125,7 @@ export function celestrakProxy() {
               .finally(() => inflight.delete(group)),
           );
         }
-        const fresh = await inflight.get(group);
+        const fresh = inflight.has(group) ? await inflight.get(group) : null;
         if (fresh) {
           send(200, fresh.body, 'MISS');
         } else if (entry) {
