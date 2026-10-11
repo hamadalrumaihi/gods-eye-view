@@ -46,6 +46,9 @@ export function createBrowserViteConfig({
           '**/.git/**',
           '**/ENVIRONMENT',
           '**/.ENVIRONMENT.*.tmp',
+          // The `.env` store stages as `..env.<random>.tmp`, which `.env.*`
+          // does not match.
+          '**/..env.*.tmp',
         ],
       },
       // These headers protect the document containing Provider Settings.

@@ -231,7 +231,7 @@ test('published transit history scope agrees with the catalog capability', () =>
   );
   const transit = state.slice(
     state.indexOf('Transit is off by default'),
-    state.indexOf('`src/data/militaryAwareness.js` remains'),
+    state.indexOf('The awareness layer (`src/layers/awareness/`) remains'),
   );
   assert.match(transit, /Restart clears it/);
   assert.doesNotMatch(

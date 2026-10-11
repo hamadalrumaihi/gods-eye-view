@@ -151,8 +151,8 @@ Keys are upgrades, not prerequisites. When you want one, click the **POWER UP**
 chip in the bottom-right corner: Provider Settings lists every supported key,
 what it switches on, and where to get it. Paste, hit **SAVE KEYS**, and the app
 restarts itself with the new capability on. Once everything is configured the
-chip reads **POWERED UP** — and if a compact layout hides it, `?setup=1`
-reopens the same panel.
+chip reads **POWERED UP**. `?setup=1` reopens the same panel at any time,
+and a KEY REQUIRED layer row offers an **ADD KEY** shortcut straight to it.
 
 - **Where keys land:** Pinokio → the app's ignored `pinokio/ENVIRONMENT`; a
   terminal clone → the repo-root `.env`. Either file is made owner-only
@@ -245,7 +245,7 @@ Click **GEV MIC**, grant the microphone, and just talk. This is more than a voic
 - **🎬 Cinematic framing.** _"Show me the planes overhead"_ pulls the camera back, angles it, and frames the live traffic like a director.
 - **🔒 Honest and secure.** The agent only confirms actions that succeeded. Your `OPENAI_API_KEY` never touches the browser; the client only gets a short-lived session token.
 
-Twenty-nine tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
+Thirty tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
 
 **🎥 Direct it** — drone-operator camera verbs:
 
@@ -382,7 +382,7 @@ src/
 ├── hud.js                  # Intelligence HUD + AI scene summary
 ├── keySetup.js             # POWER UP panel — in-app provider keys (dev server only)
 ├── mapStackController.js   # Basemap switching — Google 3D / Esri / OSM / ion stacks
-├── voice/                  # OpenAI Realtime session + 29 voice tools
+├── voice/                  # OpenAI Realtime session + 30 voice tools
 ├── layers/                 # Layer components — weather, wind, cyclones, transit, ALPR, …
 ├── data/                   # One module per layer + orchestration + context store
 │   ├── iconOrientation.js  # Screen-projected headings + horizon cull
@@ -510,7 +510,7 @@ Everything above is the deliberately cheap baseline — enough to get a real tas
 
 ### 🔒 Sharing an instance
 
-By default nobody else can reach your server — it binds to localhost. To share on your LAN, opt in explicitly (`npm run dev -- --host 0.0.0.0 --port 4173`, or `HOST=0.0.0.0 ./scripts/dev-fresh.sh` on macOS/Linux) — but know that ⚠️ **a LAN-visible server brokers your configured API keys to anyone who can reach it.** Set the per-IP throttles (`GEV_RATELIMIT_OPENAI_PER_MIN`, `GEV_RATELIMIT_GOOGLE_PER_MIN` — see `.env.example`) and, before anything else, **configure provider quotas, usage limits, and billing alerts**: app-level throttles are not billing caps, and a budget alert alone does not stop spending. Full threat model in [SECURITY.md](SECURITY.md).
+By default nobody else can reach your server — it binds to localhost. To share on your LAN, opt in explicitly (`npm run dev -- --host 0.0.0.0 --port 4173`, or `HOST=0.0.0.0 ./scripts/dev-fresh.sh` on macOS/Linux) — but know that ⚠️ **a LAN-visible server brokers your configured API keys to anyone who can reach it.** The per-IP throttles are on by default (`GEV_RATELIMIT_OPENAI_PER_MIN` 30/min, `GEV_RATELIMIT_GOOGLE_PER_MIN` 120/min; set a number to change them or `0`/`off` to disable — see `.env.example`) and, before anything else, **configure provider quotas, usage limits, and billing alerts**: app-level throttles are not billing caps, and a budget alert alone does not stop spending. Full threat model in [SECURITY.md](SECURITY.md).
 
 Provider Settings is disabled when the server is shared, so remote users cannot
 access the key-entry panel.

@@ -140,4 +140,5 @@ test('the dev server denies the staged credential temp file alongside the store'
   const { deny } = createBrowserViteConfig().server.fs;
   assert.ok(deny.includes('**/ENVIRONMENT'));
   assert.ok(deny.includes('**/.ENVIRONMENT.*.tmp'));
+  assert.ok(deny.includes('**/..env.*.tmp'));
 });
