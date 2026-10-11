@@ -124,8 +124,10 @@ test('Cockpit Escape handling precedes form-control shortcut suppression and foc
   const exit = cockpitExit.toString();
   assert.ok(enter && exit, 'Cockpit entry/exit methods are missing');
   assert.match(enter, /activeElement/);
-  assert.match(enter, /mapViewButton.*focus|focus.*mapViewButton/s);
-  assert.match(exit, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(enter, /this\.hud\?\.focus\?\.\(\{ preventScroll: true \}\)/, 'entering focuses the Cockpit HUD itself');
+  assert.doesNotMatch(enter, /mapViewButton\?\.focus/);
+  assert.match(exit, /focus\?\.\(\{ preventScroll: true \}\)/);
+  assert.match(exit, /this\.viewer\?\.canvas \|\| document\.getElementById\('cesiumContainer'\)/, 'exit falls back to the map when the entry control is hidden');
   assert.match(exit, /this\.restoreTrackingFrame\(entity\)/);
   assert.doesNotMatch(exit, /applyTrackedCameraFrame/);
   assert.match(

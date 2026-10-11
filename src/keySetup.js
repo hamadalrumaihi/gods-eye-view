@@ -1,4 +1,4 @@
-import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
+import { createSurfaceKeyboard, inertSiblings } from './ui/surfaceKeyboard.js';
 
 /**
  * The POWER UP surface — paste a key, get a power.
@@ -265,12 +265,15 @@ export async function initKeySetup({
     );
   };
 
+  let releaseInert = () => {};
   const openDialog = (options) => {
     if (disposed || open) return;
     open = true;
     const focusKey = options?.focusKey;
     keyboard.activate();
     root.hidden = false;
+    // aria-modal in the markup is a promise; inert siblings keep it.
+    releaseInert = inertSiblings(root);
     globalThis.requestAnimationFrame?.(() => {
       if (!open) return;
       root.classList.add('visible');
@@ -283,6 +286,7 @@ export async function initKeySetup({
   const close = () => {
     if (!open) return;
     open = false;
+    releaseInert();
     root.classList.remove('visible');
     const hide = () => {
       if (!open) root.hidden = true;
@@ -417,6 +421,7 @@ export async function initKeySetup({
 
   disposeControls = () => {
     open = false;
+    releaseInert();
     keyboard.destroy();
     chip.removeEventListener('click', onChipClick);
     closeButton?.removeEventListener('click', close);

@@ -86,6 +86,7 @@ export class RecordingControls {
       }
     }
     this._hudBtn.classList.toggle('active', this.hud.visible);
+    this._hudBtn.setAttribute('aria-pressed', String(!!this.hud.visible));
     this._syncShareState();
   }
   destroy() {

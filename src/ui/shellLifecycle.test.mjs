@@ -31,6 +31,10 @@ function fixture() {
       dataset: {},
       hidden: false,
       textContent: '',
+      attributes: new Map(),
+      setAttribute(name, value) {
+        this.attributes.set(name, String(value));
+      },
       classList: {
         add: (...names) => names.forEach((name) => classes.add(name)),
         remove: (...names) => names.forEach((name) => classes.delete(name)),

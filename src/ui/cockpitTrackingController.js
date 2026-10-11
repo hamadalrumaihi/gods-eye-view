@@ -196,7 +196,9 @@ export function enter() {
   this.updateHud(info, performance.now(), true);
   this.setVisionMode(this.visionMode);
   this.scheduleContextLayout();
-  this.mapViewButton?.focus({ preventScroll: true });
+  // Entry collapses the side rails and hides the entry control, so the focus
+  // owner moves with the view: the Cockpit HUD itself (tabindex="-1").
+  this.hud?.focus?.({ preventScroll: true });
   this.onEntered?.();
   this.dispatchCockpitModeChanged(true, info);
   return true;
@@ -247,8 +249,14 @@ export function exit({ restoreTracking = true } = {}) {
       ? this.entry
       : this.entry || this.entryFocusOrigin;
   this.entryFocusOrigin = null;
-  if (!this.destroyed && restoreTarget?.isConnected && !restoreTarget.hidden) {
-    restoreTarget.focus({ preventScroll: true });
+  if (!this.destroyed) {
+    // Back to the COCKPIT entry when it is still shown, otherwise to the map
+    // itself rather than leaving focus on a HUD that just became hidden.
+    const target =
+      restoreTarget?.isConnected && !restoreTarget.hidden
+        ? restoreTarget
+        : this.viewer?.canvas || document.getElementById('cesiumContainer');
+    target?.focus?.({ preventScroll: true });
   }
   return true;
 }

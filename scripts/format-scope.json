@@ -244,6 +244,7 @@
   "src/ui/cockpitContext.js",
   "src/ui/cockpitController.js",
   "src/ui/cockpitController.test.mjs",
+  "src/ui/accessibilityParity.test.mjs",
   "src/ui/cockpitDisplayPortal.js",
   "src/ui/cockpitDisplayPortal.test.mjs",
   "src/ui/cockpitInput.js",
