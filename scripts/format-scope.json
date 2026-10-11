@@ -257,7 +257,6 @@
   "src/ui/scenePresentation.js",
   "src/ui/sceneControls.test.mjs",
   "scripts/qa-scene-controls.mjs",
-  "src/ui.js",
   "src/standalone/ui.js",
   "src/ui/applicationShell.js",
   "src/ui/panelLayoutController.js",
