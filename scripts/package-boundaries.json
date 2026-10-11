@@ -35,6 +35,7 @@
     "exports": ["./server/providers/live"],
     "modules": [
       "server/providers/live.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/aircraft/opensky.js",
@@ -86,6 +87,7 @@
       "server/providers/space.js",
       "server/providers/space/celestrak.js",
       "server/providers/space/launch-library.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
       "src/data/spaceProviderRequests.js",
       "src/sources/httpBody.js"
@@ -102,19 +104,26 @@
     "exports": ["./server/providers/terrain"],
     "modules": [
       "server/providers/terrain.js",
-      "src/data/terrainHeightsProxy.js"
+      "server/providers/common/cache.js",
+      "src/data/terrainHeightsProxy.js",
+      "src/sources/httpBody.js"
     ],
     "external": []
   },
   "terrain-source": {
     "exports": ["./sources/terrain"],
-    "modules": ["src/data/terrainHeightsProxy.js"],
+    "modules": ["src/data/terrainHeightsProxy.js", "src/sources/httpBody.js"],
     "external": []
   },
   "traffic-provider": {
     "runtime": "node",
     "exports": ["./server/providers/traffic"],
-    "modules": ["server/providers/traffic.js", "src/data/tomtomTiles.js"],
+    "modules": [
+      "server/providers/traffic.js",
+      "server/providers/common/http.js",
+      "src/data/tomtomTiles.js",
+      "src/sources/httpBody.js"
+    ],
     "external": []
   },
   "traffic-source": {
@@ -130,7 +139,12 @@
   "firms-provider": {
     "runtime": "node",
     "exports": ["./server/providers/firms"],
-    "modules": ["server/providers/firms.js", "src/data/firmsCsv.js"],
+    "modules": [
+      "server/providers/firms.js",
+      "server/providers/common/http.js",
+      "src/data/firmsCsv.js",
+      "src/sources/httpBody.js"
+    ],
     "external": []
   },
   "gbfs-provider": {
@@ -163,14 +177,17 @@
       "server/providers/cctv/range.js",
       "server/providers/cctv/sources.js",
       "server/providers/cctv/stream.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
+      "server/providers/common/rate-limit.js",
       "src/data/directionText.js",
       "server/providers/common/geo.js",
       "server/providers/places/google-key.js",
       "scripts/google-server-key.mjs",
       "src/data/cctvFootprint.js",
       "src/sources/cctvTypes.js",
-      "src/sources/httpBody.js"
+      "src/sources/httpBody.js",
+      "src/sources/rateLimit.js"
     ],
     "external": []
   },
@@ -264,6 +281,7 @@
     "exports": ["./server/providers/openai"],
     "modules": [
       "src/hudLayoutPolicy.js",
+      "server/providers/common/http.js",
       "server/providers/common/rate-limit.js",
       "server/providers/common/request.js",
       "server/providers/common/source-root.js",
@@ -283,6 +301,7 @@
       "src/voice/voiceCost.js",
       "src/voice/actionSchemas.js",
       "server/providers/openai/toolDescriptions.js",
+      "src/sources/httpBody.js",
       "src/sources/rateLimit.js"
     ],
     "external": []

@@ -862,5 +862,11 @@
   "src/layers/traffic/motion.test.mjs",
   "scripts/qa-journey-recorder.mjs",
   "scripts/qa-alpr-journey.mjs",
-  "scripts/qa-context-arrivals.mjs"
+  "scripts/qa-context-arrivals.mjs",
+  "src/tooling/providerCache.test.mjs",
+  "src/tooling/fetchBounded.test.mjs",
+  "src/tooling/rateLimitDefaults.test.mjs",
+  "src/tooling/cctvStreetViewFallback.test.mjs",
+  "src/tooling/googlePlacesErrors.test.mjs",
+  "src/tooling/serverHygiene.test.mjs"
 ]

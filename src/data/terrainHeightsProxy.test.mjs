@@ -80,7 +80,9 @@ test('429 retry honors Retry-After before the next attempt', async () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ results: [result('recovered', 88)] }),
+        headers: { get: () => null },
+        text: async () =>
+          JSON.stringify({ results: [result('recovered', 88)] }),
       };
     },
   });

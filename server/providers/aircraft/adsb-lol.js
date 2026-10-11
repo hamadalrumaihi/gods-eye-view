@@ -1,3 +1,5 @@
+import { fetchBounded } from '../common/http.js';
+
 /**
  * Vite plugin: adsb.lol military aircraft proxy with 12 s response cache.
  *
@@ -32,6 +34,10 @@ export function adsbLolProxy() {
   /** Bounds for an upstream-supplied Retry-After (ms). */
   const COOLDOWN_MIN_MS = 5000;
   const COOLDOWN_MAX_MS = 120000;
+  /** Deadline for one upstream call, headers plus body. */
+  const UPSTREAM_TIMEOUT_MS = 20000;
+  /** The worldwide military feed is well under 1 MB; the cap only bounds a fault. */
+  const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
   const clampCooldown = (ms) =>
     Math.min(COOLDOWN_MAX_MS, Math.max(COOLDOWN_MIN_MS, ms));
@@ -54,6 +60,7 @@ export function adsbLolProxy() {
   function serve(res, status, body, cacheStatus, extra = {}) {
     res.writeHead(status, {
       'Content-Type': 'application/json',
+      'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store',
       'X-ADS-B-Cache': cacheStatus,
       ...(['HIT', 'STALE'].includes(cacheStatus)
@@ -94,11 +101,19 @@ export function adsbLolProxy() {
           );
           return;
         }
-        const upstream = await fetch('https://api.adsb.lol/v2/mil', {
-          headers: { 'User-Agent': 'gods-eye-view-adsblol-proxy/1.0' },
-        });
+        const { response: upstream, body } = await fetchBounded(
+          fetch,
+          'https://api.adsb.lol/v2/mil',
+          {
+            headers: { 'User-Agent': 'gods-eye-view-adsblol-proxy/1.0' },
+            timeoutMs: UPSTREAM_TIMEOUT_MS,
+            maxBytes: MAX_RESPONSE_BYTES,
+            // A failing body is never relayed (see below), so it is cancelled
+            // rather than awaited: usable stale data must not wait on it.
+            readErrorBody: false,
+          },
+        );
         if (upstream.ok) {
-          const body = await upstream.text();
           _cache = body;
           _cacheAt = Date.now();
           _cooldownUntil = 0;
@@ -114,8 +129,6 @@ export function adsbLolProxy() {
             `[adsb.lol Proxy] upstream ${upstream.status}; cooling down ${Math.round((_cooldownUntil - Date.now()) / 1000)} s${_cache ? ', serving stale' : ''}`,
           );
           if (_cache) {
-            // Do not wait for a failing response body before serving usable data.
-            upstream.body?.cancel().catch(() => {});
             serve(res, 200, _cache, 'STALE', {
               'X-ADS-B-Upstream-Status': String(upstream.status),
               'X-ADS-B-Retry-After-Seconds': String(
@@ -125,11 +138,13 @@ export function adsbLolProxy() {
             return;
           }
         }
-        const body = await upstream.text();
+        // The status and Retry-After carry the diagnosis; the upstream's own
+        // body is its wording (and can name request ids), so it is not relayed
+        // as if it were this proxy's JSON.
         serve(
           res,
           upstream.status,
-          body,
+          JSON.stringify({ error: 'adsb.lol upstream unavailable' }),
           'MISS',
           _cooldownUntil > Date.now()
             ? {

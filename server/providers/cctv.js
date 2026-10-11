@@ -14,12 +14,57 @@ import {
 } from './cctv/media.js';
 import {
   CCTV_FRAME_FETCH_TIMEOUT_MS,
+  CCTV_FRAME_MAX_BODY_BYTES,
   CCTV_MAX_SOURCES_CEILING,
 } from './cctv/constants.js';
 import { sanitizeCctvRangeHeader } from './cctv/range.js';
 import { createHlsPuller } from './cctv/stream.js';
+import { createLruCache } from './common/cache.js';
+import { fetchBounded } from './common/http.js';
+import { googleRateLimiter, clientKey } from './common/rate-limit.js';
 import { googleServerApiKey } from './places/google-key.js';
 export { CCTV_FRAME_FETCH_TIMEOUT_MS, fetchCctvImageFromUpstream };
+
+/** A Street View frame for one camera pose is reused for this long. */
+const STREET_VIEW_CACHE_TTL_MS = 5 * 60_000;
+/** Frames are ~100 KB; 500 bounds the cache at ~50 MB. */
+const STREET_VIEW_CACHE_MAX = 500;
+
+/** Wrap a heading into [0, 360). */
+const wrapHeading = (heading) => ((heading % 360) + 360) % 360;
+
+/**
+ * Street View pose for a REGISTERED camera: the registered position, and the
+ * registered heading/fov/pitch unless the client supplied a finite override,
+ * which is clamped into the ranges Street View accepts. The position itself
+ * is never client-chosen: a billed frame is only ever fetched for a place the
+ * catalog knows.
+ *
+ * @param {object} source - Registered catalog entry.
+ * @param {URLSearchParams} params - Frame request query.
+ * @returns {{lat:number, lon:number, heading:number, fov:number, pitch:number}}
+ */
+function streetViewPose(source, params) {
+  const pick = (name, registered) => {
+    const raw = params.get(name);
+    if (raw === null || !raw.trim()) return registered;
+    return toFiniteNumber(raw, registered);
+  };
+  const heading = pick('heading', source.headingDeg);
+  const fov = pick('fov', source.fovDeg);
+  const pitch = pick('pitch', source.pitchDeg);
+  return {
+    lat: source.lat,
+    lon: source.lon,
+    heading: Number.isFinite(heading) ? wrapHeading(heading) : 0,
+    fov: Number.isFinite(fov) ? Math.max(20, Math.min(120, fov)) : 80,
+    pitch: Number.isFinite(pitch) ? Math.max(-40, Math.min(20, pitch)) : 0,
+  };
+}
+
+/** Cache key: one frame per camera and whole-degree pose. */
+const streetViewCacheKey = (cameraId, pose) =>
+  `${cameraId}|${Math.round(pose.heading)}|${Math.round(pose.fov)}|${Math.round(pose.pitch)}`;
 /**
  * Vite plugin: CCTV camera proxy with source registry, frame/media serving,
  * fallback chain (upstream -> Street View -> synthetic SVG), and health tracking.
@@ -81,49 +126,49 @@ export function cctvProxy({ sourceRoot = process.cwd() } = {}) {
     };
   };
 
+  /** Street View frames by camera and rounded pose (see streetViewCacheKey). */
+  const streetViewCache = createLruCache({
+    max: STREET_VIEW_CACHE_MAX,
+    ttlMs: STREET_VIEW_CACHE_TTL_MS,
+  });
+
   /**
    * Fetch a Google Street View static image as a fallback frame. Server-side
-   * call, never reaches the browser — prefers GOOGLE_MAPS_SERVER_API_KEY
-   * (#33: a key scoped to Street View Static/Places, restricted by server IP
-   * rather than HTTP referrer) and falls back to the browser-exposed
-   * GOOGLE_MAPS_API_KEY for setups that haven't split the two yet.
+   * call, never reaches the browser — the caller resolves the key through
+   * googleServerApiKey() (#33: GOOGLE_MAPS_SERVER_API_KEY, a key scoped to
+   * Street View Static/Places and restricted by server IP rather than HTTP
+   * referrer, falling back to the browser-exposed GOOGLE_MAPS_API_KEY for
+   * setups that haven't split the two yet). The pose comes from
+   * streetViewPose, so it is already clamped.
    */
-  const streetViewFallback = async ({ lat, lon, heading, fov, pitch }) => {
-    const streetViewKey = googleServerApiKey();
-    if (!streetViewKey || !Number.isFinite(lat) || !Number.isFinite(lon))
-      return null;
+  const streetViewFallback = async ({ lat, lon, heading, fov, pitch, key }) => {
+    if (!key || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     try {
       const sv = new URL('https://maps.googleapis.com/maps/api/streetview');
       sv.searchParams.set('size', '960x540');
       sv.searchParams.set('location', `${lat},${lon}`);
-      sv.searchParams.set(
-        'heading',
-        String(Number.isFinite(heading) ? heading : 0),
-      );
-      sv.searchParams.set(
-        'fov',
-        String(Number.isFinite(fov) ? Math.max(20, Math.min(120, fov)) : 80),
-      );
-      sv.searchParams.set(
-        'pitch',
-        String(Number.isFinite(pitch) ? Math.max(-40, Math.min(20, pitch)) : 0),
-      );
+      sv.searchParams.set('heading', String(heading));
+      sv.searchParams.set('fov', String(fov));
+      sv.searchParams.set('pitch', String(pitch));
       sv.searchParams.set('source', 'outdoor');
       sv.searchParams.set('return_error_code', 'true');
-      sv.searchParams.set('key', streetViewKey);
+      sv.searchParams.set('key', key);
 
-      const svResp = await fetch(sv.toString(), {
-        headers: { 'User-Agent': 'gods-eye-view-cctv-proxy/1.0' },
-        signal: AbortSignal.timeout(CCTV_FRAME_FETCH_TIMEOUT_MS),
-      });
+      const { response: svResp, body } = await fetchBounded(
+        fetch,
+        sv.toString(),
+        {
+          headers: { 'User-Agent': 'gods-eye-view-cctv-proxy/1.0' },
+          timeoutMs: CCTV_FRAME_FETCH_TIMEOUT_MS,
+          maxBytes: CCTV_FRAME_MAX_BODY_BYTES,
+          as: 'bytes',
+          readErrorBody: false,
+        },
+      );
       const svType = svResp.headers.get('content-type') || '';
       if (!svResp.ok || !svType.startsWith('image/')) return null;
 
-      return {
-        ok: true,
-        body: Buffer.from(await svResp.arrayBuffer()),
-        contentType: svType,
-      };
+      return { ok: true, body: Buffer.from(body), contentType: svType };
     } catch {
       return null;
     }
@@ -469,13 +514,6 @@ export function cctvProxy({ sourceRoot = process.cwd() } = {}) {
         const source = sourceById.get(cameraId);
         const label = url.searchParams.get('label') || source?.name || cameraId;
         const city = url.searchParams.get('city') || source?.city || '';
-        const lat = Number(url.searchParams.get('lat') || source?.lat);
-        const lon = Number(url.searchParams.get('lon') || source?.lon);
-        const heading = Number(
-          url.searchParams.get('heading') || source?.headingDeg,
-        );
-        const fov = Number(url.searchParams.get('fov') || source?.fovDeg);
-        const pitch = Number(url.searchParams.get('pitch') || source?.pitchDeg);
 
         // Only use server-registered upstream URLs — never accept client-supplied URLs
         // (prevents SSRF via ?upstream= query parameter)
@@ -505,27 +543,49 @@ export function cctvProxy({ sourceRoot = process.cwd() } = {}) {
           return;
         }
 
-        const sv = await streetViewFallback({
-          lat,
-          lon,
-          heading,
-          fov,
-          pitch,
-        });
-        if (sv?.ok) {
-          setHealth(cameraId, {
-            status: 'degraded',
-            sourceKind: 'streetview',
-            label: 'Google Street View',
-            message: 'Fallback Street View frame',
-          });
-          res.writeHead(200, {
-            'Content-Type': sv.contentType,
-            'Cache-Control': 'no-store',
-            'X-CCTV-Source': 'streetview',
-          });
-          res.end(sv.body);
-          return;
+        // Street View is a billed request, so it is made only for a REGISTERED
+        // camera (an unknown id goes straight to the placeholder), at the
+        // registered position, from a bounded cache, and under the shared
+        // Google limiter. A cache hit costs no quota and skips the limiter.
+        const streetViewKey = source ? googleServerApiKey() : '';
+        if (
+          streetViewKey &&
+          Number.isFinite(source.lat) &&
+          Number.isFinite(source.lon)
+        ) {
+          const pose = streetViewPose(source, url.searchParams);
+          const cacheKey = streetViewCacheKey(cameraId, pose);
+          let sv = streetViewCache.get(cacheKey);
+          if (!sv) {
+            const limiter = googleRateLimiter();
+            if (limiter && !limiter(clientKey(req))) {
+              res.writeHead(429, {
+                'Content-Type': 'application/json',
+                'X-Content-Type-Options': 'nosniff',
+                'Cache-Control': 'no-store',
+                'Retry-After': '5',
+              });
+              res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+              return;
+            }
+            sv = await streetViewFallback({ ...pose, key: streetViewKey });
+            if (sv?.ok) streetViewCache.set(cacheKey, sv);
+          }
+          if (sv?.ok) {
+            setHealth(cameraId, {
+              status: 'degraded',
+              sourceKind: 'streetview',
+              label: 'Google Street View',
+              message: 'Fallback Street View frame',
+            });
+            res.writeHead(200, {
+              'Content-Type': sv.contentType,
+              'Cache-Control': 'no-store',
+              'X-CCTV-Source': 'streetview',
+            });
+            res.end(sv.body);
+            return;
+          }
         }
 
         const svg = buildSyntheticCctvSvg({
