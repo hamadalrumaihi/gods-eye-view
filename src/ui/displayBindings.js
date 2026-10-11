@@ -129,8 +129,10 @@ export class DisplayBindings {
         celestialButton: this._celestialBtn,
         modelsButton: this._models3dBtn,
         modelModeButtons: this._models3dBtn ? this._models3dModeBtns : [],
+        resetPanelsButton: this._resetPanelsBtn,
       },
       actions: {
+        resetPanels: () => this.resetPanelLayout(),
         setStyle: (style) => this.setStyle(style),
         toggleBloom: () => {
           this.shareLinkManager?.claimRestoreLane?.('visual');

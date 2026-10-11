@@ -7,6 +7,9 @@ const PANEL_LAYOUT_STORAGE_VERSION = 'v6';
  * resetting every panel's open/closed preference.
  */
 const PANEL_POSITION_STORAGE_VERSION = 'v8';
+/** Every panel layout key this app has ever written, whatever its version. */
+const PANEL_STORAGE_KEY_PATTERN =
+  /^godsEyeView\.v\d+\.(panelCollapsed|panelPos)\./;
 /** Z ladder: panels promote within [100, 139]; voice pill 150, toast 200, clean-view-exit 300. */
 const PANEL_Z_BASE = 100;
 const PANEL_Z_MAX = 139;
@@ -102,6 +105,12 @@ export class PanelPositionControls {
     const panelEl = document.getElementById(panelId);
     if (!panelEl) return;
     let collapsed = panelEl.classList.contains('collapsed');
+    // The markup default, remembered on first restore so a later "Reset
+    // panels" can return here after stored and shared states have applied.
+    if (panelEl.dataset && panelEl.dataset.defaultCollapsed === undefined)
+      panelEl.dataset.defaultCollapsed = String(
+        panelId === 'pp-toggles' ? true : collapsed,
+      );
     let stored = null;
     if (allowStored) {
       try {
@@ -131,6 +140,33 @@ export class PanelPositionControls {
           ? 'default'
           : 'stored';
     this._syncPanelCollapseButton(panelEl);
+  }
+
+  /**
+   * Forget every stored panel position and collapsed state, across storage
+   * versions, and drop the inline position a drag or restore applied so the
+   * stylesheet's default placement returns without a reload.
+   * @returns {number} How many storage keys were removed.
+   */
+  resetStoredLayout() {
+    let removed = 0;
+    try {
+      const stale = Object.keys(localStorage).filter((key) =>
+        PANEL_STORAGE_KEY_PATTERN.test(key),
+      );
+      for (const key of stale) {
+        localStorage.removeItem(key);
+        removed += 1;
+      }
+    } catch {
+      // storage unavailable
+    }
+    const el = this._ppToggles;
+    if (el?.style) {
+      for (const property of ['left', 'top', 'right', 'bottom'])
+        el.style[property] = '';
+    }
+    return removed;
   }
 
   _savePanelCollapsedState(panelId, collapsed) {

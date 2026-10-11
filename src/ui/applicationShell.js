@@ -520,9 +520,11 @@ export class StyleManager extends ShellFacade {
         _scopeFeatherValue: this._scopeFeatherValue,
         _sharpenSliderValue: this._sharpenSliderValue,
         _detectionDensityValue: this._detectionDensityValue,
+        _resetPanelsBtn: this._resetPanelsBtn,
       },
       operations: {
         setStyle: (...args) => this.setStyle(...args),
+        resetPanelLayout: (...args) => this.resetPanelLayout(...args),
         _updateHudButtonState: (...args) => this._updateHudButtonState(...args),
         _syncShareState: (...args) => this._syncShareState(...args),
         _toggleOrbit: (...args) => this._toggleOrbit(...args),
@@ -1049,6 +1051,15 @@ export class StyleManager extends ShellFacade {
     } = {},
   ) {
     return this._panelChrome.setPanelCollapsed(...arguments);
+  }
+
+  /**
+   * Forget stored panel positions and collapsed states and return every panel
+   * to its markup default without a reload.
+   * @returns {void}
+   */
+  resetPanelLayout() {
+    return this._panelChrome.resetPanelLayout();
   }
 
   /**

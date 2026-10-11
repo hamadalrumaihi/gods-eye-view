@@ -177,6 +177,11 @@
         <span class="pp-slider-value" id="sharpen-intensity-value">49%</span>
       </div>
     </div>
+    <!-- Forget stored panel positions and collapsed states (no reload), so a
+         panel collapsed out of reach comes back without console commands. -->
+    <div class="pp-toggle-group pp-reset-panels-group">
+      <button class="pp-mode-btn pp-reset-panels-btn" id="reset-panels-btn" type="button" title="Forget saved panel positions and open/closed states">RESET PANELS</button>
+    </div>
   </div>
   </div>
   <button id="clean-view-exit" title="Return UI controls">EXIT CLEAN VIEW</button>

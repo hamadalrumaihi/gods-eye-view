@@ -270,6 +270,7 @@
   "src/ui/uiLifetime.js",
   "src/ui/styles.js",
   "src/ui/shellLifecycle.test.mjs",
+  "src/ui/panelLayoutReset.test.mjs",
   "src/testSupport/readStylesheet.mjs",
   "src/splitFlap.js",
   "style.css",
