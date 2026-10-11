@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { WebSocketServer } from 'ws';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as providers from '../../server/providers/live.js';
@@ -380,4 +381,20 @@ test('track backfill proxy returns 502 on an oversized upstream body and caches 
   const res2 = await tracks('/api/opensky-track', '?icao24=def456');
   assert.equal(res2.statusCode, 502);
   assert.equal(callCount, 1);
+});
+
+test('ws is a runtime dependency because the AIS proxy loads it under vite preview', () => {
+  // `vite preview` is the documented way to check a built app, and the vessel
+  // proxy requires `ws` lazily at request time, so a devDependency would be
+  // missing from an `npm install --omit=dev` checkout.
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  );
+  assert.ok(pkg.dependencies.ws, 'ws is declared under dependencies');
+  assert.equal(pkg.devDependencies.ws, undefined);
+  const aisLive = readFileSync(
+    new URL('../../server/providers/vessels/ais-live.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(aisLive, /createRequire\(import\.meta\.url\)\('ws'\)/);
 });
