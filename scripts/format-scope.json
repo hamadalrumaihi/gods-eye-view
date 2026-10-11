@@ -616,6 +616,7 @@
   "src/app/tools.js",
   "src/app/startupChrome.js",
   "src/app/errors.js",
+  "src/app/errorCapture.test.mjs",
   "scripts/project-root.mjs",
   "src/toolProjectRoot.test.mjs",
   "src/app/catalog.js",

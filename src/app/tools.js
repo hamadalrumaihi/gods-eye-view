@@ -5,6 +5,7 @@ import { initImageryBoxTool } from '../ui/imageryBoxTool.js';
 import { createRecentImageryPanel } from '../ui/recentImagery.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
+import { createErrorCapture } from './errorCapture.js';
 import {
   installRenderGovernor,
   getRenderGovernorDiagnostics,
@@ -139,6 +140,11 @@ export function createApplicationTools({
   // loop burning behind a hidden tab. (perf wave 2 fix)
   syncVisibilitySuspension();
 
+  // Uncaught errors and unhandled rejections, bounded, for live gates and bug
+  // reports. Messages and stacks only; never payloads or key values.
+  const errorCapture = createErrorCapture();
+  defer(() => errorCapture.dispose());
+
   window.__godsEyeView = {
     viewer,
     styleManager,
@@ -152,6 +158,10 @@ export function createApplicationTools({
     getRenderGovernorDiagnostics,
     surfaceServices: operations.surface,
     requestRender: governorRequestRender,
+    diagnostics: {
+      errors: errorCapture.getEntries,
+      clearErrors: errorCapture.clear,
+    },
   };
   const debug = window.__godsEyeView;
   defer(() => {
