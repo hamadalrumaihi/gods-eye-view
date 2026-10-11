@@ -80,8 +80,18 @@ export class DisplayBindings {
         },
         toggleOrbit: () => this._toggleOrbit(),
         toggleCleanView: () => this.toggleCleanView(),
-        toggleLayers: () =>
-          document.getElementById('data-panel').classList.toggle('active'),
+        // Collapse through the panel chrome so the DATA LAYERS header stays on
+        // screen as the way back; toggling `.active` hid the whole panel with
+        // no visible restore.
+        toggleLayers: () => {
+          const panel = document.getElementById('data-panel');
+          if (!panel) return;
+          this.setPanelCollapsed(
+            'data-panel',
+            !panel.classList.contains('collapsed'),
+            { explicit: true },
+          );
+        },
         cycleDetection: () => {
           this.shareLinkManager?.claimRestoreLane?.('visual');
           this.claimDetection();
