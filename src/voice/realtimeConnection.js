@@ -122,8 +122,11 @@ export class RealtimeConnection {
       });
       if (this.abandonStart(epoch, { localStream, localPc })) return;
       this.stream = localStream;
+      // A tab hidden during the microphone prompt keeps the mic muted until
+      // it returns (the visibility handler restores it).
       this.setMicrophoneEnabled(
-        !this.input.pushToTalkMode || this.input.pushToTalkKeyHeld,
+        (!this.input.pushToTalkMode || this.input.pushToTalkKeyHeld) &&
+          !this.input.microphoneMutedWhileHidden,
       );
       this.startVoiceVisualizer(localStream);
 

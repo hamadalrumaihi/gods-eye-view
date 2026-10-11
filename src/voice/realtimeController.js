@@ -129,6 +129,7 @@ export class GevRealtimeController extends RealtimeFacade {
         isActive: (...args) => this.isActive(...args),
         setStatus: (...args) => this.setStatus(...args),
         start: (...args) => this.start(...args),
+        stop: (...args) => this.stop(...args),
         pauseRadioForVoice: (...args) => this.pauseRadioForVoice(...args),
       },
     });

@@ -453,6 +453,7 @@ test('push-to-talk teardown removes installed listeners and replacement binds on
   assert.equal(f.document.count('keyup'), 0);
   assert.equal(f.document.count('visibilitychange'), 0);
   assert.equal(f.window.count('blur'), 0);
+  assert.equal(f.window.count('pagehide'), 0);
   f.key('keydown', outside);
   f.advance(PUSH_TO_TALK_HOLD_DELAY_MS);
   assert.equal(f.starts.length, 0, 'the removed controller must not respond');
@@ -462,6 +463,7 @@ test('push-to-talk teardown removes installed listeners and replacement binds on
   assert.equal(f.document.count('keyup'), 1);
   assert.equal(f.document.count('visibilitychange'), 1);
   assert.equal(f.window.count('blur'), 1);
+  assert.equal(f.window.count('pagehide'), 1);
   f.key('keydown', pushToTalkTarget({ tagName: 'INPUT', type: 'text' }));
   f.advance(PUSH_TO_TALK_HOLD_DELAY_MS);
   assert.equal(f.starts.length, 0);
@@ -471,6 +473,71 @@ test('push-to-talk teardown removes installed listeners and replacement binds on
   assert.equal(replacement.microphone.enabled, true);
   f.key('keyup', outside);
   assert.equal(replacement.microphone.enabled, false);
+});
+
+test('a hidden tab mutes an open-mic session and a visible tab restores it', (t) => {
+  const f = createPushToTalkFixture(t);
+  f.controller.start({ pushToTalk: false });
+  assert.equal(f.microphone.enabled, true);
+  f.document.visibilityState = 'hidden';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, false, 'no hot mic behind a hidden tab');
+  assert.equal(f.controller.ui.root.dataset.microphone, 'muted');
+  assert.equal(f.controller.status, 'listening', 'the session itself stays live');
+  f.document.visibilityState = 'visible';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, true, 'the open mic returns with the tab');
+  assert.equal(f.controller.ui.root.dataset.microphone, 'active');
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, true, 'a repeat visible event is inert');
+});
+
+test('a session stopped while hidden does not re-arm the mic on return', (t) => {
+  const f = createPushToTalkFixture(t);
+  f.controller.start({ pushToTalk: false });
+  f.document.visibilityState = 'hidden';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, false);
+  f.controller.stop();
+  assert.equal(f.microphone.stopped, true);
+  assert.equal(f.controller.microphoneMutedWhileHidden, false, 'stop() forgets the hidden mute');
+  f.document.visibilityState = 'visible';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, false, 'an idle controller never re-enables a released track');
+  assert.equal(f.controller.status, 'idle');
+});
+
+test('a push-to-talk session stays muted when the tab returns', (t) => {
+  const f = createPushToTalkFixture(t);
+  f.key('keydown', pushToTalkTarget());
+  f.advance(PUSH_TO_TALK_HOLD_DELAY_MS);
+  assert.equal(f.microphone.enabled, true);
+  f.document.visibilityState = 'hidden';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, false);
+  f.document.visibilityState = 'visible';
+  f.document.dispatch('visibilitychange');
+  assert.equal(f.microphone.enabled, false, 'only a held Space re-opens a push-to-talk mic');
+  assert.equal(f.controller.pushToTalkMode, true);
+});
+
+test('pagehide closes the peer connection once and stops the microphone tracks', (t) => {
+  const f = createPushToTalkFixture(t);
+  f.controller.start({ pushToTalk: false });
+  let peerCloses = 0;
+  let channelCloses = 0;
+  f.controller.pc = { close() { peerCloses += 1; } };
+  f.controller.dc = { readyState: 'open', send() {}, close() { channelCloses += 1; } };
+  f.window.dispatch('pagehide');
+  assert.equal(peerCloses, 1, 'peer connection closed');
+  assert.equal(channelCloses, 1, 'data channel closed');
+  assert.equal(f.microphone.stopped, true, 'microphone tracks stopped');
+  assert.equal(f.controller.pc, null);
+  assert.equal(f.controller.stream, null);
+  assert.equal(f.controller.status, 'listening', 'preserveStatus leaves the final status to the unloading page');
+  f.window.dispatch('pagehide');
+  assert.equal(peerCloses, 1, 'a repeat pagehide has nothing left to close');
+  assert.equal(f.window.count('pagehide'), 1, 'the listener stays bound until teardown');
 });
 
 test('mic clicks are ignored while Space is physically held', () => {
