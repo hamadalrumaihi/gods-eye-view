@@ -20,6 +20,7 @@ import { LocalSdrControls } from './localSdrControls.js';
 import { LocationNavigation } from './locationNavigation.js';
 import { bindClearLayersControl } from './layers.js';
 import { bindCameraOrientationControls } from './cameraOrientationControls.js';
+import { createShareFallback } from './shareFallback.js';
 import { createMapSourceControls } from './mapSource.js';
 import { STYLES } from './effects.js';
 import { isHudLayout } from '../hudLayouts.js';
@@ -1428,13 +1429,26 @@ export class StyleManager extends ShellFacade {
 
   /**
    * Wires the share button click to copy the current share link to the clipboard.
+   * When the clipboard is unavailable the link is offered in a popover instead.
    * @returns {void}
    */
   _initShareButton() {
+    this._shareFallback?.destroy();
+    this._shareFallback = createShareFallback({
+      root: this._shareFallbackRoot,
+      showToast: (message) => this._showToast(message),
+    });
     this._lifetime.listen(this._shareBtn, 'click', async () => {
       const success = await this.shareLinkManager.copyLink();
-      if (!this._disposed)
-        this._showToast(success ? 'Link copied!' : 'Copy failed');
+      if (this._disposed) return;
+      if (success) {
+        this._shareFallback.hide({ restoreFocus: false });
+        this._showToast('Link copied!');
+        return;
+      }
+      const url = this.shareLinkManager.buildShareUrl?.();
+      if (url) this._shareFallback.show(url);
+      else this._showToast('Copy failed');
     });
   }
 
@@ -1532,6 +1546,7 @@ export class StyleManager extends ShellFacade {
     this._displayBindings.destroy();
     this._mapSourceControls?.destroy();
     this._cameraOrientationControls?.destroy();
+    this._shareFallback?.destroy();
     this._clearLayersControl?.destroy();
     this._cctvControls?.destroy();
     this._radioControls?.destroy();

@@ -177,6 +177,7 @@
   "src/ui/displayBindings.test.mjs",
   "src/ui/cameraOrientationControls.js",
   "src/ui/cameraOrientationControls.test.mjs",
+  "src/ui/shareFallback.test.mjs",
   "src/ui/effects.js",
   "src/ui/visualEffects.js",
   "src/ui/visualPresets.js",
