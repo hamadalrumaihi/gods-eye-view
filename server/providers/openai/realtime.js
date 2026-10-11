@@ -1,4 +1,5 @@
 import { enforceOptInRateLimit, openAiRateLimiter } from './rate-limit.js';
+import { fetchBounded } from '../common/http.js';
 import {
   resolveVoiceModel,
   isKnownVoiceTier,
@@ -13,6 +14,9 @@ import {
 } from './constants.js';
 import { realtimeInstructions } from './instructions.js';
 import { GEV_REALTIME_TOOLS } from './tools.js';
+
+/** A client secret response is a small JSON object. */
+const REALTIME_TOKEN_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 function createRealtimeTokenHandler({
   annotationGuidance,
@@ -119,19 +123,22 @@ function createRealtimeTokenHandler({
     };
 
     try {
-      const response = await fetchImpl(endpoint, {
+      const { response, body } = await fetchBounded(fetchImpl, endpoint, {
         method: 'POST',
         redirect: 'error',
-        signal: AbortSignal.timeout(30_000),
+        timeoutMs: 30_000,
+        maxBytes: REALTIME_TOKEN_MAX_RESPONSE_BYTES,
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'OpenAI-Safety-Identifier': 'gev-local-dev',
         },
         body: JSON.stringify(sessionConfig),
+        // The failure body is replaced by a fixed message below.
+        readErrorBody: false,
       });
-      const body = await response.text();
       res.statusCode = response.status;
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       // Which tier/model this secret was actually minted for. The upstream
       // success body is passed through untouched (the client parses it
       // verbatim), so these headers are the authoritative echo — including the

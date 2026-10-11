@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { createLruCache } from '../common/cache.js';
+import { fetchBounded } from '../common/http.js';
 import { celestrakTleUrl } from '../../../src/data/spaceProviderRequests.js';
 
 /**
@@ -23,6 +24,8 @@ import { celestrakTleUrl } from '../../../src/data/spaceProviderRequests.js';
  */
 export function celestrakProxy() {
   const TLE_TTL_MS = 6 * 3600_000;
+  /** The `active` group is ~1.5 MB of TLE text; 8 MB only bounds a fault. */
+  const TLE_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
   const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
   const mem = new Map(); // group -> { at: epochMs, body: string }
   const inflight = new Map(); // group -> Promise<{at, body}|null>
@@ -56,8 +59,10 @@ export function celestrakProxy() {
 
   async function fetchUpstream(group) {
     const url = celestrakTleUrl(group);
-    const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(20000),
+    const { response: res, body } = await fetchBounded(fetch, url.toString(), {
+      timeoutMs: 20000,
+      maxBytes: TLE_MAX_RESPONSE_BYTES,
+      readErrorBody: false,
       // CelesTrak 403s bulk groups (e.g. `active`) unless the request carries a
       // descriptive User-Agent with a contact point.
       headers: {
@@ -66,7 +71,6 @@ export function celestrakProxy() {
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.text();
     // An upstream error page parses to zero TLEs — treat as failure, keep cache.
     if (!/^1 /m.test(body)) throw new Error('no TLE lines in response');
     return { at: Date.now(), body };

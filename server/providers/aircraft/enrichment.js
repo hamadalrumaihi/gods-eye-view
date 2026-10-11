@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 import { createLruCache } from '../common/cache.js';
+import { fetchBounded } from '../common/http.js';
 /**
  * adsbdb.com enrichment proxy: callsign → route (airline + origin/destination
  * airports) and hex → aircraft type/registration. Free community API — cached
@@ -12,6 +13,8 @@ export function adsbdbProxy() {
   const TTL_MS = 24 * 3600_000;
   /** Keys are client-chosen callsigns/hex ids, so each store is bounded. */
   const CACHE_MAX_ENTRIES = 5000;
+  /** One adsbdb record is a few KB; the cap only bounds a misbehaving upstream. */
+  const MAX_RESPONSE_BYTES = 1024 * 1024;
   const CACHE_PATH = path.join(process.cwd(), '.gev-cache', 'adsbdb.json');
   // Values keep the on-disk `{at, data}` shape; the cache's own clock handles
   // the TTL and the entry's `at` seeds it so a reload does not reset aging.
@@ -105,12 +108,19 @@ export function adsbdbProxy() {
               kind === 'route'
                 ? `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(key)}`
                 : `https://api.adsbdb.com/v0/aircraft/${encodeURIComponent(key)}`;
-            const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+            const { response: res, body: json } = await fetchBounded(
+              fetch,
+              url,
+              {
+                timeoutMs: 8000,
+                maxBytes: MAX_RESPONSE_BYTES,
+                as: 'json',
+                readErrorBody: false,
+              },
+            );
             if (res.ok) {
               const data =
-                kind === 'route'
-                  ? parseRoute(await res.json())
-                  : parseAircraft(await res.json());
+                kind === 'route' ? parseRoute(json) : parseAircraft(json);
               store.set(key, { at: Date.now(), data }); // data may be null — negative cache
               dirty = true;
               return data;

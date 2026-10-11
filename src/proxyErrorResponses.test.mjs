@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { readResponseTextCapped, coalesceProxyRequest } from './sources/httpBody.js';
 import { createLruCache } from '../server/providers/common/cache.js';
+import { fetchBounded } from '../server/providers/common/http.js';
 
 const source = ['local.js', 'common/http.js', 'aircraft/enrichment.js', 'terrain.js', 'space/celestrak.js', 'space/launch-library.js', '../../src/data/spaceProviderRequests.js']
   .map(file => readFileSync(new URL(`../server/providers/${file}`, import.meta.url), 'utf8'))
@@ -22,7 +23,7 @@ function extract(name) {
 function fixture(name, overrides = {}, preview = false) {
   const logs = [];
   const deps = {
-    readResponseTextCapped, coalesceProxyRequest, createLruCache,
+    readResponseTextCapped, coalesceProxyRequest, createLruCache, fetchBounded,
     path, process: { cwd: () => '/fixture', env: {} },
     fsp: {
       readFile: async () => { throw new Error('cache absent'); },

@@ -865,5 +865,6 @@
   "scripts/qa-journey-recorder.mjs",
   "scripts/qa-alpr-journey.mjs",
   "scripts/qa-context-arrivals.mjs",
-  "src/tooling/providerCache.test.mjs"
+  "src/tooling/providerCache.test.mjs",
+  "src/tooling/fetchBounded.test.mjs"
 ]

@@ -1,9 +1,13 @@
 // Pure server-side mechanics for the Re:Earth terrain-heights proxy.
 // Kept free of Vite/Node middleware state so cache reconstruction and retry
 // behavior can be exercised by the offline node:test suite.
+import { readResponseJsonCapped } from '../sources/httpBody.js';
 
 /** Decimal precision used by the terrain client when serializing lon/lat. */
 export const TERRAIN_POINT_PRECISION = 5;
+
+/** Ceiling on one upstream chunk response; 64 heights are a few KB of JSON. */
+export const TERRAIN_CHUNK_MAX_BYTES = 4 * 1024 * 1024;
 
 /** Maximum time retries may add after the first upstream attempt settles. */
 export const TERRAIN_RETRY_BUDGET_MS = 10_000;
@@ -119,6 +123,7 @@ export async function fetchTerrainChunkWithRetry(
     attemptTimeoutMs = 30_000,
     retryBudgetMs = TERRAIN_RETRY_BUDGET_MS,
     maxAttempts = TERRAIN_MAX_ATTEMPTS,
+    maxBytes = TERRAIN_CHUNK_MAX_BYTES,
   } = {},
 ) {
   const pointsParam = points.map(terrainPointKey).join(';');
@@ -143,7 +148,16 @@ export async function fetchTerrainChunkWithRetry(
         error.retryAfter = res.headers?.get?.('retry-after') ?? null;
         throw error;
       }
-      const json = await res.json();
+      let json;
+      try {
+        // The attempt's signal also bounds the body read, so a stalled body
+        // cannot outlive the attempt timeout.
+        json = await readResponseJsonCapped(res, maxBytes, signal);
+      } catch (error) {
+        // An oversized body will be oversized again; do not spend retries on it.
+        if (error?.code === 'RESPONSE_TOO_LARGE') error.retryable = false;
+        throw error;
+      }
       if (!Array.isArray(json?.results)) {
         const error = new Error(
           'malformed upstream response (no results array)',

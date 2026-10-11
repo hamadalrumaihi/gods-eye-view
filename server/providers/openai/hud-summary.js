@@ -3,8 +3,14 @@ import {
   keylessHudSummaryResponse,
 } from '../../../src/hudSummaryResponse.js';
 import { enforceOptInRateLimit, openAiRateLimiter } from './rate-limit.js';
+import { fetchBounded } from '../common/http.js';
 import { readRequestBody } from '../common/request.js';
 import { OPENAI_HUD_SUMMARY_MODEL_DEFAULT } from './constants.js';
+
+/** Deadline for the five-word summary; the HUD falls back locally past it. */
+const HUD_SUMMARY_TIMEOUT_MS = 15_000;
+/** A Responses API answer with max_output_tokens 100 is a few KB. */
+const HUD_SUMMARY_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 function extractOpenAiResponseText(data) {
   if (typeof data?.output_text === 'string' && data.output_text.trim()) {
@@ -54,26 +60,40 @@ async function handleHudSummary(req, res) {
   try {
     const body = await readRequestBody(req, 64 * 1024);
     const context = JSON.parse(body || '{}');
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const { response, body: upstreamBody } = await fetchBounded(
+      fetch,
+      'https://api.openai.com/v1/responses',
+      {
+        method: 'POST',
+        timeoutMs: HUD_SUMMARY_TIMEOUT_MS,
+        maxBytes: HUD_SUMMARY_MAX_RESPONSE_BYTES,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model:
+            process.env.OPENAI_HUD_SUMMARY_MODEL ||
+            OPENAI_HUD_SUMMARY_MODEL_DEFAULT,
+          instructions: HUD_SUMMARY_INSTRUCTIONS,
+          input: JSON.stringify(context),
+          reasoning: { effort: 'minimal' },
+          max_output_tokens: 100,
+        }),
+        // Only a successful answer is parsed; the failure body is never relayed.
+        readErrorBody: false,
       },
-      body: JSON.stringify({
-        model:
-          process.env.OPENAI_HUD_SUMMARY_MODEL ||
-          OPENAI_HUD_SUMMARY_MODEL_DEFAULT,
-        instructions: HUD_SUMMARY_INSTRUCTIONS,
-        input: JSON.stringify(context),
-        reasoning: { effort: 'minimal' },
-        max_output_tokens: 100,
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
+    );
+    let data = {};
+    try {
+      data = upstreamBody ? JSON.parse(upstreamBody) : {};
+    } catch {
+      data = {};
+    }
     const summary = toFiveWordHudSummary(extractOpenAiResponseText(data));
     res.statusCode = response.ok && summary ? 200 : response.status || 502;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
     if (!response.ok)
       console.warn(`[hud-summary] upstream HTTP ${response.status}`);

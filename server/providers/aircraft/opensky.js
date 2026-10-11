@@ -1,9 +1,21 @@
 import { normalizeAdsbLolPointResponse } from '../../../src/data/adsbLolFallback.js';
 import {
   coalesceProxyRequest,
+  fetchBounded,
   readResponseJsonCapped,
 } from '../common/http.js';
 import { requiredFiniteQueryNumber } from '../common/query.js';
+/** Global state vector endpoint; every mode fetches the same URL. */
+const OPENSKY_STATES_URL =
+  'https://opensky-network.org/api/states/all?extended=1';
+const OPENSKY_TOKEN_URL =
+  'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+/** Deadline for one upstream OpenSky call, headers plus body. */
+const OPENSKY_UPSTREAM_TIMEOUT_MS = 20_000;
+/** A worldwide extended state vector snapshot is ~5-8 MB; 16 MB leaves headroom. */
+const OPENSKY_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+/** A token response is a few hundred bytes. */
+const OPENSKY_TOKEN_MAX_RESPONSE_BYTES = 64 * 1024;
 // ---------------------------------------------------------------------------
 // OpenSky OAuth2 token + response cache state
 // ---------------------------------------------------------------------------
@@ -102,18 +114,21 @@ export async function getOpenSkyToken() {
   // Wrap the async token fetch in a shared promise stored in _openskyTokenPromise
   _openskyTokenPromise = (async () => {
     try {
-      const res = await fetch(
-        'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token',
+      const { response: res, body: text } = await fetchBounded(
+        fetch,
+        OPENSKY_TOKEN_URL,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`,
+          timeoutMs: OPENSKY_UPSTREAM_TIMEOUT_MS,
+          maxBytes: OPENSKY_TOKEN_MAX_RESPONSE_BYTES,
         },
       );
 
       let data = null;
       try {
-        data = await res.json();
+        data = JSON.parse(text);
       } catch {
         data = null;
       }
@@ -470,10 +485,13 @@ export function openSkyProxy() {
           }
         }
 
-        let upstream = await fetch(
-          'https://opensky-network.org/api/states/all?extended=1',
-          { headers },
-        );
+        const fetchStates = (requestHeaders) =>
+          fetchBounded(fetch, OPENSKY_STATES_URL, {
+            headers: requestHeaders,
+            timeoutMs: OPENSKY_UPSTREAM_TIMEOUT_MS,
+            maxBytes: OPENSKY_MAX_RESPONSE_BYTES,
+          });
+        let { response: upstream, body } = await fetchStates(headers);
         // Auto-mode fallback: if OAuth was rejected, retry with Basic credentials
         if (
           (upstream.status === 401 || upstream.status === 403) &&
@@ -485,15 +503,11 @@ export function openSkyProxy() {
             Accept: 'application/json',
             Authorization: `Basic ${Buffer.from(`${basicUser}:${basicPass}`).toString('base64')}`,
           };
-          upstream = await fetch(
-            'https://opensky-network.org/api/states/all?extended=1',
-            { headers: retryHeaders },
-          );
+          ({ response: upstream, body } = await fetchStates(retryHeaders));
           usedMode = 'basic';
           reason = 'oauth_rejected_fallback_basic';
         }
 
-        let body = await upstream.text();
         const sourceEpochMs = upstream.ok ? openSkySourceEpochMs(body) : null;
         if (
           upstream.ok &&
