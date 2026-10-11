@@ -35,7 +35,7 @@ const FILES = {
   voiceInstructions: path.join(ROOT, 'server/providers/openai/instructions.js'),
   voiceTools: path.join(ROOT, 'server/providers/openai/tools.js'),
   main: path.join(ROOT, 'src', 'standalone', 'startupChrome.js'),
-  ui: path.join(ROOT, 'src', 'ui.js'),
+  ui: path.join(ROOT, 'src', 'ui', 'panelPositionControls.js'),
   docs: path.join(ROOT, 'docs', 'CURRENT-STATE.md'),
 };
 

@@ -3,26 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as Cesium from 'cesium';
-import militaryAwarenessLayer, {
-  _getAwarenessNavigationStateForTest,
-  awarenessClearMatchesSubject,
-  awarenessNeedsContinuousRender,
-  awarenessRefreshDecision,
-  awarenessRefreshIntervalMs,
-  awarenessRefreshRequired,
-  awarenessResultsAreLive,
-  awarenessPanelControlKey,
-  buildAwarenessContextSnapshot,
-  canNavigateAwarenessNext,
-  contactsWindowFromSnapshot,
-  contextTargetFlyToAllowed,
-  captureAwarenessPanelFocus,
-  summarizeInstallationViewport,
-  findCompatibleHistoryIndex,
-  AWARENESS_QUERY_LIMIT,
-  historySubjectSnapshot,
-  restoreAwarenessPanelFocus,
-} from './militaryAwareness.js';
+import { createApplicationAwareness } from '../app/layers/militaryAwareness.js';
+import { AWARENESS_QUERY_LIMIT } from '../layers/awareness/index.js';
 import flightsLayer, {
   _setTrackedFlightRefreshStateForTest,
 } from './flights.js';
@@ -42,6 +24,33 @@ import {
   getAwarenessNavigationTargets,
 } from './militaryAwarenessEngine.js';
 import { NAVIGATION_AUTHORITY_EVENT } from '../navigationPolicy.js';
+
+// One Contacts layer over the default layer instances, the way the catalog binds it.
+const militaryAwarenessLayer = createApplicationAwareness({
+  flights: flightsLayer,
+  military: militaryFlightsLayer,
+  vessels: aisLiveVesselsLayer,
+  installations: militaryInstallationsLayer,
+});
+const {
+  _getAwarenessNavigationStateForTest,
+  awarenessClearMatchesSubject,
+  awarenessNeedsContinuousRender,
+  awarenessRefreshDecision,
+  awarenessRefreshIntervalMs,
+  awarenessRefreshRequired,
+  awarenessResultsAreLive,
+  awarenessPanelControlKey,
+  buildAwarenessContextSnapshot,
+  canNavigateAwarenessNext,
+  contactsWindowFromSnapshot,
+  contextTargetFlyToAllowed,
+  captureAwarenessPanelFocus,
+  summarizeInstallationViewport,
+  findCompatibleHistoryIndex,
+  historySubjectSnapshot,
+  restoreAwarenessPanelFocus,
+} = militaryAwarenessLayer;
 
 const militaryAwarenessSource = readLayerSource(
   new URL('./militaryAwareness.js', import.meta.url),

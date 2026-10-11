@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
-import transitLayer, {
+import {
   TRANSIT_MODE_COLORS,
   TRANSIT_POLL_MS,
   TRANSIT_SELECTED_OVERLAY_SOURCE_OPTIONS,
@@ -10,10 +10,25 @@ import transitLayer, {
   interpolatedVehiclePosition,
   isStaleVehicleFix,
   transitVehicleKey,
-} from './transit.js';
+} from '../layers/transit/index.js';
+import { createApplicationTransit } from '../app/layers/transit.js';
+import { createSurfaceServices } from '../app/surfaceServices.js';
 import { TRANSIT_MODES, getTransitFeed } from './transitFeeds.js';
 import { LAYER_STATE_REGISTRY } from './layerState.js';
 import { SPRITE_LAYER_ORDER } from './spriteOrder.js';
+
+// One layer over the application surface, the way the catalog constructs it.
+const lifetime = new AbortController();
+after(() => lifetime.abort());
+const transitLayer = createApplicationTransit({
+  surface: createSurfaceServices({
+    terrainSource: {
+      getHeights: async (chunk) => chunk.map(() => ({ ellipsoid: 0 })),
+    },
+    signal: lifetime.signal,
+    eventTarget: null,
+  }),
+});
 
 test('layer module declares the manager contract', () => {
   assert.equal(transitLayer.id, 'transit');

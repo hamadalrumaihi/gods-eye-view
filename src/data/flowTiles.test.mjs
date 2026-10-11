@@ -4,13 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  decodeFlowTile,
-  fetchFlowForBounds,
-  tilesForBounds,
-  getFlowSessionStats,
-  resetFlowTileCache,
-} from './flowTiles.js';
+import { decodeFlowTile } from '../layers/traffic/flowDecode.js';
+import { createFlowTileSource } from '../layers/traffic/flowSource.js';
+import { tilesForBounds } from './tomtomTiles.js';
+
+const { fetchFlowForBounds, getFlowSessionStats, resetFlowTileCache } = createFlowTileSource();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Real TomTom flow tile, downtown Austin z12 x935 y1686 (probed live 2026-07-16).
