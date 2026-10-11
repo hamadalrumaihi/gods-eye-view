@@ -100,13 +100,42 @@ export function _initCctvPanel() {
     this.actions.setParams({ selectedCameraId: selected }, { origin: 'user' });
   });
 
-  this.listen(this._cctvCoverageBtn, 'click', () => {
-    const current =
-      this._cctvState?.coverageMode ||
-      (this._cctvState?.showCoverage ? 'on' : 'off');
-    const next =
-      current === 'off' ? 'on' : current === 'on' ? 'viewshed' : 'off';
-    this.actions.setParams({ coverageMode: next }, { origin: 'user' });
+  // Coverage is a three-option radiogroup (OFF / ON / VIEWSHED). Clicks are
+  // delegated to the group; arrows, Home and End move the roving focus and
+  // select, as the Display segmented controls do.
+  const coverageOptions = () =>
+    Array.from(
+      this._cctvCoverageMode?.querySelectorAll?.('[data-coverage-mode]') || [],
+    );
+  const selectCoverage = (option) => {
+    if (!option || option.disabled) return;
+    this.actions.setParams(
+      { coverageMode: option.dataset.coverageMode },
+      { origin: 'user' },
+    );
+  };
+  this.listen(this._cctvCoverageMode, 'click', (event) => {
+    selectCoverage(event.target?.closest?.('[data-coverage-mode]'));
+  });
+  this.listen(this._cctvCoverageMode, 'keydown', (event) => {
+    const options = coverageOptions();
+    if (!options.length) return;
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[
+      event.key
+    ];
+    let next = null;
+    if (step) {
+      const index = options.indexOf(
+        event.target?.closest?.('[data-coverage-mode]'),
+      );
+      if (index < 0) return;
+      next = options[(index + step + options.length) % options.length];
+    } else if (event.key === 'Home') next = options[0];
+    else if (event.key === 'End') next = options[options.length - 1];
+    if (!next) return;
+    event.preventDefault();
+    next.focus?.({ preventScroll: true });
+    selectCoverage(next);
   });
 
   this.listen(this._cctvAutoHopBtn, 'click', () => {

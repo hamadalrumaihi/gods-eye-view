@@ -39,8 +39,18 @@
       </div>
       <div class="cctv-controls">
         <button id="cctv-focus-btn" class="scene-btn">FOCUS</button>
-        <button id="cctv-coverage-btn" class="scene-btn">COVERAGE OFF</button>
         <button id="cctv-auto-hop-btn" class="scene-btn">AUTO HOP OFF</button>
+      </div>
+      <!-- Coverage is one of three states (viewshed design §3b): off → on
+           (wireframes) → viewshed (color-coded volumes). All three are visible
+           at once so the current one is never a guess. -->
+      <div class="cctv-controls cctv-coverage-row">
+        <span id="cctv-coverage-label" class="cctv-coverage-label">COVERAGE</span>
+        <div id="cctv-coverage-mode" class="pp-mode-seg cctv-coverage-seg" role="radiogroup" aria-labelledby="cctv-coverage-label">
+          <button class="pp-mode-btn active" type="button" role="radio" data-coverage-mode="off" aria-checked="true" tabindex="0">OFF</button>
+          <button class="pp-mode-btn" type="button" role="radio" data-coverage-mode="on" aria-checked="false" tabindex="-1">ON</button>
+          <button class="pp-mode-btn" type="button" role="radio" data-coverage-mode="viewshed" aria-checked="false" tabindex="-1">VIEWSHED</button>
+        </div>
       </div>
       <div class="cctv-controls">
         <button id="cctv-projection-btn" class="scene-btn">PROJECTION ON</button>

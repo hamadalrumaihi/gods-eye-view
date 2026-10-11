@@ -945,7 +945,7 @@ export class StyleManager extends ShellFacade {
         _cctvCalReadout: this._cctvCalReadout,
         _cctvCalibResetBtn: this._cctvCalibResetBtn,
         _cctvCalibSaveBtn: this._cctvCalibSaveBtn,
-        _cctvCoverageBtn: this._cctvCoverageBtn,
+        _cctvCoverageMode: this._cctvCoverageMode,
         _cctvEnableBtn: this._cctvEnableBtn,
         _cctvFocusBtn: this._cctvFocusBtn,
         _cctvFrame: this._cctvFrame,

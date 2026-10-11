@@ -160,14 +160,26 @@ try {
   );
   const coverage = (await state()).coverageMode;
   const modes = [];
-  for (let i = 0; i < 3; i++) {
-    await page.click('#cctv-coverage-btn');
+  const checked = [];
+  for (const mode of ['on', 'viewshed', 'off']) {
+    await page.click(`#cctv-coverage-mode [data-coverage-mode="${mode}"]`);
     modes.push((await state()).coverageMode);
+    checked.push(
+      await page.$eval(
+        '#cctv-coverage-mode [aria-checked="true"]',
+        (option) => option.dataset.coverageMode,
+      ),
+    );
   }
   check(
-    'coverage cycles through all three modes and returns to its starting state',
-    new Set(modes).size === 3 && modes.at(-1) === coverage,
-    modes,
+    'coverage options select each of the three modes and the radiogroup reflects them',
+    modes.join() === 'on,viewshed,off' && checked.join() === modes.join(),
+    { modes, checked },
+  );
+  await page.click(`#cctv-coverage-mode [data-coverage-mode="${coverage}"]`);
+  check(
+    'coverage returns to its starting state',
+    (await state()).coverageMode === coverage,
   );
   const projection = (await state()).showProjection;
   await page.click('#cctv-projection-btn');
