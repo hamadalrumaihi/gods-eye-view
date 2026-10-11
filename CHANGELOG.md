@@ -51,6 +51,25 @@
   `./layers/transit/standalone` package export (breaking for any external
   consumer of that export; `./layers/transit` and `./application/layers`
   remain).
+- **Keyboard chords no longer trigger map shortcuts.** Cmd/Ctrl+C, Cmd+D and
+  Cmd+F are left to the browser instead of toggling CCTV, cycling detection or
+  hiding the Data Layers panel; held keys do not autorepeat shortcuts; `F`
+  collapses the panel with its header visible.
+- **Share works without the clipboard.** When `navigator.clipboard` is
+  unavailable or denied, the link appears in a small dialog with the URL
+  pre-selected, a COPY button and Escape to close.
+- **ADD KEY on key-required layers.** A row waiting on a provider key shows an
+  ADD KEY chip that opens Provider Settings on that key's field (development
+  server only).
+- **RESET PANELS in DISPLAY** returns every panel to its default position and
+  open/closed state without the console.
+- **CCTV COVERAGE is an OFF / ON / VIEWSHED segmented control** instead of a
+  cycling button.
+- **Accessibility:** visual presets and the HUD, clean view, bloom and sharpen
+  toggles expose `aria-pressed`; entering Cockpit focuses the cockpit HUD and
+  leaving returns focus to the COCKPIT control; the first-run and Provider
+  Settings dialogs are modal (`aria-modal`, `inert` siblings); the viewport meta
+  sets `viewport-fit=cover` so safe-area insets apply on notched screens.
 - README: the voice tool count is 30, the keyboard list names `O`, `V` and `F`,
   and the Provider Settings section describes `?setup=1` and the ADD KEY
   shortcut.

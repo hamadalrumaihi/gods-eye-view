@@ -252,6 +252,11 @@ listener; repeated activation is harmless. `deactivate({ restoreFocus: true })`
 removes that listener and restores the opener when connected, otherwise invoking
 the supplied fallback. Omit return focus when yielding to another surface.
 `destroy()` permanently releases ownership without moving focus.
+`createSurfaceKeyboard` alone does not make a surface modal; the same module
+exports `inertSiblings(root)`, which makes the open surface's sibling top-level
+containers `inert` and returns a release function that restores only what it
+changed. The welcome launcher and Provider Settings pair the two and declare
+`aria-modal="true"`.
 
 The welcome launcher and Provider Settings retain content, visibility, initial
 focus, animation and screen-specific policy. Tab boundaries are read from the
@@ -379,7 +384,11 @@ facade's asynchronous teardown can yield.
 `ui/display` owns Display button, selector and slider subscriptions. It receives
 DOM elements and explicit actions, imports no application or effect singleton,
 and releases every listener on destruction. Settings and rendering remain with
-the caller.
+the caller. It also binds the RESET PANELS button to a `resetPanels` action and
+the `F` shortcut to a `setPanelCollapsed` action; the panel chrome owns the
+layout reset (`resetPanelLayout()`, with each panel's markup default remembered
+as `data-default-collapsed`) and the stored-key removal
+(`PanelPositionControls.resetStoredLayout()`).
 
 ## Visual effects
 
@@ -405,7 +414,12 @@ the supplied controller.
 `ui/layers` exports the Layers panel and clear-control binding. Callers supply
 snapshots, row descriptors, subscriptions and actions; the component imports no
 layer implementation or application bootstrap. Layer transactions remain with
-the caller. Hidden-page refresh scheduling remains an explicit callback.
+the caller. Hidden-page refresh scheduling remains an explicit callback. The
+panel accepts an optional `openKeySetup` constructor option and
+`attachKeySetup(open)`; while an opener is attached, a key-required row shows
+an ADD KEY chip that calls it with `{ focusKey }`. The application supplies the
+opener from `startApplicationChrome({ onSettings })` through
+`LayerPresentation`, so a build without Provider Settings shows no chip.
 
 `ui/layers/feedback` exposes the existing pure loading/notice reducers separately
 from DOM controls. Scheduling and presentation stay with their callers.
@@ -432,6 +446,8 @@ subscriptions before ending the active tuning interaction.
 presentation. It receives DOM elements, the existing camera port and explicit
 application actions; it imports no provider, layer or camera engine. Selection,
 placement, navigation and storage policy remain outside the component family.
+Coverage is a three-option radiogroup (`#cctv-coverage-mode`, bound as
+`_cctvCoverageMode`) that sets the `coverageMode` param directly.
 
 ### Context coordination
 

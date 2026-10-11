@@ -80,6 +80,51 @@ different keys both persist. `build/vite.js` denies the staged credential temp
 files (`**/.ENVIRONMENT.*.tmp`, `**/..env.*.tmp`). JSON responders touched in
 this batch send `X-Content-Type-Options: nosniff`.
 
+**Keyboard shortcuts.** The bubbling map shortcuts (`1`–`7`, `H`, `O`, `V`,
+`F`, `D`, `C`, `Esc`) ignore keys pressed with Ctrl, Cmd or Alt and held-key
+autorepeat, so browser chords such as Cmd/Ctrl+C, Cmd+D and Cmd+F are left to
+the browser; `contenteditable` regions keep native typing like form controls.
+`F` collapses and expands the DATA LAYERS panel through the panel chrome, so
+its header stays visible, instead of hiding the panel.
+
+**Share link fallback.** When `navigator.clipboard` is unavailable (a plain-http
+LAN visit) or the write is denied, the Share button offers the link in
+`#share-fallback`: a small dialog above the dock with the URL pre-selected in a
+read-only field, COPY (tries `document.execCommand('copy')`), CLOSE and Escape,
+which returns focus to the opener. `ShareLinkManager.buildShareUrl({ nowMs })`
+exposes the URL; `copyLink` keeps its boolean contract.
+
+**ADD KEY chip.** A Data Layers row whose provider key is missing shows an
+**ADD KEY** chip beside its toggle while Provider Settings exists (development
+server, loopback). The chip opens Provider Settings with that key's field
+focused (`keySetup.open({ focusKey })`); its `aria-label` names the layer and
+the key. The opener reaches the panel through
+`startApplicationChrome({ onSettings })` → `LayerPresentation.attachKeySetup`;
+a preview build or LAN visitor keeps the guidance text without the chip.
+
+**RESET PANELS.** The DISPLAY panel has a RESET PANELS control.
+`PanelPositionControls.resetStoredLayout()` removes every
+`godsEyeView.v*.panelCollapsed.*` and `godsEyeView.v*.panelPos.*` key and clears
+inline positions; `PanelChrome.resetPanelLayout()` re-applies each panel's
+markup default, remembered as `data-default-collapsed` on first restore, and
+toasts `Panel layout reset`. The DISPLAY panel stays open for the session.
+
+**CCTV coverage control.** COVERAGE is a three-option radiogroup
+(`#cctv-coverage-mode`: OFF / ON / VIEWSHED) with `aria-checked`, a roving
+tabindex and arrow/Home/End selection, bound to the `coverageMode` param. The
+cycling `#cctv-coverage-btn` is gone; `scripts/qa-camera-controls.mjs` selects
+each option directly.
+
+**Accessibility parity.** The seven `.style-btn` presets and `#hud-toggle`,
+`#clean-view-toggle`, `#bloom-toggle` and `#sharpen-toggle` carry `aria-pressed`
+kept in sync with `.active`. Entering Cockpit focuses `#cockpit-hud`
+(`tabindex="-1"`); leaving returns focus to `#cockpit-entry`, or to the map
+canvas when that control is hidden. The first-run launcher and Provider
+Settings are `aria-modal="true"` and make their sibling top-level containers
+`inert` while open (`inertSiblings` from `src/ui/surfaceKeyboard.js`), released
+on close and teardown. The viewport meta includes `viewport-fit=cover`, so the
+`env(safe-area-inset-*)` offsets in `responsive.css` and `cockpit.css` apply.
+
 **Tooling.** `npm test` discovers `*.test.mjs` under `src/`, `server/` and
 `scripts/`; `node scripts/run-unit-tests.mjs --filter <glob-or-substring>`
 (repeatable) and `--list` select files, and other arguments pass through to

@@ -46,11 +46,15 @@ Workaround:
   the browser console:
   - `localStorage.setItem('godsEyeView.v6.panelCollapsed.cctv-panel', '0');`
   - `location.reload();`
-- Removing that key instead returns the panel to its default, which is collapsed:
-  - `localStorage.removeItem('godsEyeView.v6.panelCollapsed.cctv-panel');`
-  - `location.reload();`
-- Neither console line changes anything when the page was opened from a share
-  link: a shared view is laid out from the link, not from what this browser has
+- To return every panel to its default (positions and open/closed state)
+  without a reload or the console, open **DISPLAY** and press **RESET PANELS**.
+  It removes every `godsEyeView.v*.panelCollapsed.*` and
+  `godsEyeView.v*.panelPos.*` key; the DISPLAY panel itself stays open, and its
+  default applies on the next load. The console equivalent for one panel is
+  `localStorage.removeItem('godsEyeView.v6.panelCollapsed.cctv-panel');` then
+  `location.reload();`.
+- None of this changes anything when the page was opened from a share link: a
+  shared view is laid out from the link, not from what this browser has
   stored, so open the panel from its header control instead.
 
 Related keys (current versions):
