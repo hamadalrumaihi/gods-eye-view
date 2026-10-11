@@ -867,5 +867,6 @@
   "scripts/qa-context-arrivals.mjs",
   "src/tooling/providerCache.test.mjs",
   "src/tooling/fetchBounded.test.mjs",
-  "src/tooling/rateLimitDefaults.test.mjs"
+  "src/tooling/rateLimitDefaults.test.mjs",
+  "src/tooling/cctvStreetViewFallback.test.mjs"
 ]

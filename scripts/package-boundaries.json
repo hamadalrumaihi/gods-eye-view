@@ -177,14 +177,17 @@
       "server/providers/cctv/range.js",
       "server/providers/cctv/sources.js",
       "server/providers/cctv/stream.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
+      "server/providers/common/rate-limit.js",
       "src/data/directionText.js",
       "server/providers/common/geo.js",
       "server/providers/places/google-key.js",
       "scripts/google-server-key.mjs",
       "src/data/cctvFootprint.js",
       "src/sources/cctvTypes.js",
-      "src/sources/httpBody.js"
+      "src/sources/httpBody.js",
+      "src/sources/rateLimit.js"
     ],
     "external": []
   },
