@@ -7,7 +7,7 @@
     </div>
     <div class="pp-panel-body" data-rail-scroller>
     <div class="pp-toggle-group">
-      <button class="pp-toggle-btn" id="hud-toggle" title="Intelligence HUD (H)">
+      <button class="pp-toggle-btn" id="hud-toggle" title="Intelligence HUD (H)" aria-pressed="false">
         <span class="pp-icon">&#x25CE;</span>
         <span class="pp-label">HUD</span>
       </button>
@@ -153,12 +153,12 @@
         <span class="pp-label">Celestial</span>
       </button>
     </div>
-    <button class="pp-toggle-btn" id="clean-view-toggle" title="Hide UI chrome">
+    <button class="pp-toggle-btn" id="clean-view-toggle" title="Hide UI chrome" aria-pressed="false">
       <span class="pp-icon">&#x25A1;</span>
       <span class="pp-label">Clean UI</span>
     </button>
     <div class="pp-toggle-group">
-      <button class="pp-toggle-btn" id="bloom-toggle" title="Bloom / Glow">
+      <button class="pp-toggle-btn" id="bloom-toggle" title="Bloom / Glow" aria-pressed="false">
         <span class="pp-icon">&#x2728;</span>
         <span class="pp-label">Bloom</span>
       </button>
@@ -168,7 +168,7 @@
       </div>
     </div>
     <div class="pp-toggle-group">
-      <button class="pp-toggle-btn" id="sharpen-toggle" title="Sharpening">
+      <button class="pp-toggle-btn" id="sharpen-toggle" title="Sharpening" aria-pressed="false">
         <span class="pp-icon">&#x1F50D;</span>
         <span class="pp-label">Sharpen</span>
       </button>
@@ -176,6 +176,11 @@
         <input type="range" class="pp-slider" id="sharpen-intensity-slider" min="0" max="100" value="49" aria-label="Sharpen intensity" />
         <span class="pp-slider-value" id="sharpen-intensity-value">49%</span>
       </div>
+    </div>
+    <!-- Forget stored panel positions and collapsed states (no reload), so a
+         panel collapsed out of reach comes back without console commands. -->
+    <div class="pp-toggle-group pp-reset-panels-group">
+      <button class="pp-mode-btn pp-reset-panels-btn" id="reset-panels-btn" type="button" title="Forget saved panel positions and open/closed states">RESET PANELS</button>
     </div>
   </div>
   </div>

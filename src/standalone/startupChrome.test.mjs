@@ -124,3 +124,56 @@ test('shutdown during the cover transition cancels the listener and fallback', a
   f.fire(900);
   assert.deepEqual(f.events, ['hidden', 'settings:destroy']);
 });
+
+test('onSettings receives the live Provider Settings controller, never after shutdown or for a removed surface', async () => {
+  const seen = [];
+  const build = (settings, abort = false) => {
+    const controller = new AbortController();
+    const context = {
+      console,
+      setTimeout: () => 1,
+      clearTimeout() {},
+      initFirstRunExperience: () => null,
+    };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    if (abort) controller.abort();
+    const stop = context.startApplicationChrome({
+      initializeSettings: async () => settings,
+      onSettings: (value) => seen.push(value),
+      loadingScreen: {
+        classList: { add() {} },
+        addEventListener() {},
+        removeEventListener() {},
+      },
+      styleManager: { initialRestorePromise: Promise.resolve() },
+      dataManager: {},
+      signal: controller.signal,
+    });
+    return { stop, controller };
+  };
+  const live = { open() {}, destroy() {} };
+  const first = build(live);
+  await flush();
+  assert.deepEqual(seen, [live]);
+  await first.stop();
+
+  const removed = build(null);
+  await flush();
+  await removed.stop();
+  assert.deepEqual(
+    seen,
+    [live],
+    'a removed surface (prod, LAN) hands over nothing',
+  );
+
+  const late = build({ open() {}, destroy() {} });
+  late.controller.abort();
+  await flush();
+  await late.stop();
+  assert.deepEqual(
+    seen,
+    [live],
+    'shutdown before the fetch settles never attaches an opener',
+  );
+});

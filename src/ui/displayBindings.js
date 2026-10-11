@@ -80,8 +80,18 @@ export class DisplayBindings {
         },
         toggleOrbit: () => this._toggleOrbit(),
         toggleCleanView: () => this.toggleCleanView(),
-        toggleLayers: () =>
-          document.getElementById('data-panel').classList.toggle('active'),
+        // Collapse through the panel chrome so the DATA LAYERS header stays on
+        // screen as the way back; toggling `.active` hid the whole panel with
+        // no visible restore.
+        toggleLayers: () => {
+          const panel = document.getElementById('data-panel');
+          if (!panel) return;
+          this.setPanelCollapsed(
+            'data-panel',
+            !panel.classList.contains('collapsed'),
+            { explicit: true },
+          );
+        },
         cycleDetection: () => {
           this.shareLinkManager?.claimRestoreLane?.('visual');
           this.claimDetection();
@@ -119,8 +129,10 @@ export class DisplayBindings {
         celestialButton: this._celestialBtn,
         modelsButton: this._models3dBtn,
         modelModeButtons: this._models3dBtn ? this._models3dModeBtns : [],
+        resetPanelsButton: this._resetPanelsBtn,
       },
       actions: {
+        resetPanels: () => this.resetPanelLayout(),
         setStyle: (style) => this.setStyle(style),
         toggleBloom: () => {
           this.shareLinkManager?.claimRestoreLane?.('visual');

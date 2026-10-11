@@ -479,6 +479,7 @@ export class VisualSettings {
     this._visualEffects.setBloomEnabled(enabled);
     this._syncBloomStageEnabled();
     this._bloomBtn.classList.toggle('active', this.bloomEnabled);
+    this._bloomBtn.setAttribute('aria-pressed', String(!!this.bloomEnabled));
     this._bloomSliderRow.classList.toggle('visible', this.bloomEnabled);
     if (this.bloomEnabled) {
       this._applyBloomIntensity(this._getBloomIntensity());
@@ -496,6 +497,10 @@ export class VisualSettings {
     governorRequestRender('sharpen');
     this._visualEffects.setSharpenEnabled(enabled);
     this._sharpenBtn.classList.toggle('active', this.sharpenEnabled);
+    this._sharpenBtn.setAttribute(
+      'aria-pressed',
+      String(!!this.sharpenEnabled),
+    );
     if (this._sharpenSliderRow) {
       this._sharpenSliderRow.classList.toggle('visible', this.sharpenEnabled);
     }
@@ -1550,9 +1555,7 @@ export class VisualSettings {
     }
 
     // Update button UI
-    document.querySelectorAll('.style-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.style === styleName);
-    });
+    this._syncStyleButtons(styleName);
 
     // Update style indicator
     const displayNames = { surveillance: 'NVG', thermal: 'FLIR', retro: 'CRT' };
@@ -1594,8 +1597,18 @@ export class VisualSettings {
       String(styleName || 'normal').toUpperCase();
   }
 
+  /** Mark the one active preset, visually and for assistive technology. */
+  _syncStyleButtons(styleName) {
+    document.querySelectorAll('.style-btn').forEach((btn) => {
+      const active = btn.dataset.style === styleName;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', String(active));
+    });
+  }
+
   _updateHudButtonState() {
     this._hudBtn.classList.toggle('active', this.hud.visible);
+    this._hudBtn.setAttribute('aria-pressed', String(!!this.hud.visible));
     if (this._hudLayoutRow) {
       this._hudLayoutRow.classList.toggle('visible', this.hud.visible);
     }

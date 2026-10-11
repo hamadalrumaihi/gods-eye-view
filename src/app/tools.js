@@ -93,8 +93,25 @@ export function createApplicationTools({
       imageryBoxTool?.destroy();
     });
   }
-  if (startChrome)
-    defer(startChrome({ loadingScreen, styleManager, dataManager, signal }));
+  if (startChrome) {
+    // Key-required layer rows get an ADD KEY chip only once Provider Settings
+    // proves it exists (dev server, loopback); withdrawn with the tools.
+    defer(() => data.presentation?.attachKeySetup?.(null));
+    defer(
+      startChrome({
+        loadingScreen,
+        styleManager,
+        dataManager,
+        signal,
+        onSettings: (settings) => {
+          if (typeof settings?.open !== 'function') return;
+          data.presentation?.attachKeySetup?.((options) =>
+            settings.open(options),
+          );
+        },
+      }),
+    );
+  }
   // Idle render governor: flips the scene into requestRenderMode whenever
   // nothing animates per frame. Installed AFTER every module above has had
   // its chance to register pre-install holds. (perf wave 2)

@@ -1,4 +1,4 @@
-import { createSurfaceKeyboard } from './ui/surfaceKeyboard.js';
+import { createSurfaceKeyboard, inertSiblings } from './ui/surfaceKeyboard.js';
 
 // First-run mission launcher.
 //
@@ -412,10 +412,12 @@ export function initFirstRunExperience({
     root.getClientRects().length > 0 &&
     !coveredByOverlay();
 
+  let releaseInert = () => {};
   const dismiss = ({ restoreFocus = true } = {}) => {
     if (closing) return;
     closing = true;
     rememberFirstRunSessionDismissed(sessionStorageRef);
+    releaseInert();
     root.classList.remove('visible');
     root.setAttribute('aria-hidden', 'true');
     globalThis.removeEventListener?.('resize', onViewportResize);
@@ -541,6 +543,8 @@ export function initFirstRunExperience({
     if (revealed || closing) return;
     revealed = true;
     root.hidden = false;
+    // aria-modal in the markup is a promise; inert siblings keep it.
+    releaseInert = inertSiblings(root);
     globalThis.requestAnimationFrame?.(() => {
       if (closing) return;
       root.classList.add('visible');
@@ -630,6 +634,7 @@ export function initFirstRunExperience({
   // Teardown is not a user dismissal and must not change the show preference.
   const destroy = () => {
     closing = true;
+    releaseInert();
     keyboard.destroy();
     globalThis.removeEventListener?.('resize', onViewportResize);
     surfaceObserver?.disconnect();

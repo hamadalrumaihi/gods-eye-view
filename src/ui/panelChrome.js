@@ -574,6 +574,28 @@ export class PanelChrome {
   _layoutRightPanels() {
     this._scheduleRightPanelLayout();
   }
+  /**
+   * The "Reset panels" control: forget stored positions and collapsed states,
+   * then return every restored panel to its markup default in place. The
+   * DISPLAY panel hosting the control stays open so the result is visible and
+   * the keyboard is not stranded on a control that just vanished; its stored
+   * key is gone too, so the default applies on the next load.
+   */
+  resetPanelLayout() {
+    if (this._disposed) return;
+    this._panelPosition.resetStoredLayout();
+    document.querySelectorAll('[data-default-collapsed]').forEach((panelEl) => {
+      if (!panelEl.id || panelEl.id === 'pp-toggles') return;
+      this.setPanelCollapsed(
+        panelEl.id,
+        panelEl.dataset.defaultCollapsed === 'true',
+        { restore: true, persist: false, syncShare: false },
+      );
+      panelEl.dataset.collapsedPreference = 'default';
+    });
+    this.shareLinkManager?.onPanelStateChange?.();
+    this._showToast('Panel layout reset');
+  }
   enterCockpit() {
     // A new Cockpit session owns both side rails. Clear standard map-view
     // panels once on entry; NEXT/PREVIOUS never reaches this callback, so

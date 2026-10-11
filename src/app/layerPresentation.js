@@ -76,6 +76,12 @@ export class LayerPresentation {
     if (factory) this.panel.attachRecentImagery(factory);
     else this._panel?.attachRecentImagery(null);
   }
+  /** Hand the Provider Settings opener to the panel once that surface exists. */
+  attachKeySetup(open) {
+    // Withdrawing never builds a panel that teardown already released.
+    if (open) this.panel.attachKeySetup(open);
+    else this._panel?.attachKeySetup(null);
+  }
   refresh() {
     this._panel?._refreshTogglePanel();
   }

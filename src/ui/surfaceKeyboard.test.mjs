@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSurfaceKeyboard } from './surfaceKeyboard.js';
+import { createSurfaceKeyboard, inertSiblings } from './surfaceKeyboard.js';
 
 function fixture() {
   const listeners = new Set();
@@ -218,4 +218,46 @@ test('destroy is permanent, releases its listener and never restores focus', () 
   const e = f.event('Tab');
   handler(e);
   assert.equal(e.defaultPrevented, false);
+});
+
+test('inertSiblings disables only the siblings it changed and releases exactly those', () => {
+  const parent = { children: [] };
+  const node = (extra = {}) => {
+    const created = {
+      inert: false,
+      tagName: 'DIV',
+      parentNode: parent,
+      ...extra,
+    };
+    parent.children.push(created);
+    return created;
+  };
+  const map = node();
+  const root = node();
+  const already = node({ inert: true });
+  const script = node({ tagName: 'SCRIPT' });
+  const toast = node();
+  const release = inertSiblings(root);
+  assert.deepEqual(
+    [map, root, already, script, toast].map((n) => n.inert),
+    [true, false, true, false, true],
+  );
+  // A second surface opening on top only changes what is still live.
+  const releaseInner = inertSiblings(toast);
+  assert.equal(root.inert, true);
+  releaseInner();
+  assert.deepEqual(
+    [map, root, already, toast].map((n) => n.inert),
+    [true, false, true, true],
+    'the inner release leaves the outer surface intact',
+  );
+  release();
+  release();
+  assert.deepEqual(
+    [map, root, already, script, toast].map((n) => n.inert),
+    [false, false, true, false, false],
+    'a sibling that was already inert stays that way',
+  );
+  assert.doesNotThrow(() => inertSiblings(null)());
+  assert.doesNotThrow(() => inertSiblings({})());
 });

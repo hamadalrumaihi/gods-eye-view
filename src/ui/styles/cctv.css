@@ -169,8 +169,28 @@
   opacity: 0.45;
 }
 
+.cctv-coverage-row {
+  align-items: center;
+}
+
+.cctv-coverage-label {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+.cctv-coverage-seg .pp-mode-btn {
+  height: 26px;
+}
+
+.cctv-coverage-seg .pp-mode-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 #cctv-enable-btn.active,
-#cctv-coverage-btn.active,
 #cctv-auto-hop-btn.active,
 #cctv-projection-btn.active {
   color: var(--accent);
