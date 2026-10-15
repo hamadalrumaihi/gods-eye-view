@@ -60,20 +60,40 @@ function createDebugLogHandler({ sourceRoot = defaultSourceRoot } = {}) {
     return done;
   }
 
+  const respond = (res, statusCode, payload, headers = {}) => {
+    res.writeHead(statusCode, {
+      'Content-Type': 'application/json',
+      'X-Content-Type-Options': 'nosniff',
+      ...headers,
+    });
+    res.end(JSON.stringify(payload));
+  };
+
   return async (req, res) => {
     if (req.method !== 'POST') {
-      res.statusCode = 405;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Method not allowed' }));
+      respond(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+
+    // Only the app's own JSON client writes here. A form or text/plain POST
+    // (the kinds a cross-site page can send without a preflight) is refused
+    // before it spends a limiter slot or touches the log.
+    const contentType = String(req.headers?.['content-type'] || '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    if (contentType !== 'application/json') {
+      respond(res, 415, { error: 'Content-Type must be application/json' });
       return;
     }
 
     if (!allow(clientKey(req))) {
-      res.writeHead(429, {
-        'Content-Type': 'application/json',
-        'Retry-After': '60',
-      });
-      res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+      respond(
+        res,
+        429,
+        { error: 'Rate limit exceeded' },
+        { 'Retry-After': '60' },
+      );
       return;
     }
 
@@ -96,9 +116,9 @@ function createDebugLogHandler({ sourceRoot = defaultSourceRoot } = {}) {
       const callerFault =
         error instanceof SyntaxError || error?.code === 'BODY_TOO_LARGE';
       if (!callerFault) console.warn('[realtime-debug-log] append failed');
-      res.statusCode = callerFault ? 400 : 500;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Failed to write Realtime debug log' }));
+      respond(res, callerFault ? 400 : 500, {
+        error: 'Failed to write Realtime debug log',
+      });
     }
   };
 }

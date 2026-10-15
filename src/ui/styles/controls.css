@@ -887,6 +887,15 @@
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
 }
+.pp-reset-panels-group {
+  display: flex;
+}
+.pp-reset-panels-btn {
+  flex: 1;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+}
 .draw-hint {
   flex-basis: 100%;
   font-family: var(--font-mono);

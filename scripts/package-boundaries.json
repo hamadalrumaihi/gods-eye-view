@@ -35,6 +35,7 @@
     "exports": ["./server/providers/live"],
     "modules": [
       "server/providers/live.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
       "server/providers/common/query.js",
       "server/providers/aircraft/opensky.js",
@@ -86,6 +87,7 @@
       "server/providers/space.js",
       "server/providers/space/celestrak.js",
       "server/providers/space/launch-library.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
       "src/data/spaceProviderRequests.js",
       "src/sources/httpBody.js"
@@ -102,19 +104,26 @@
     "exports": ["./server/providers/terrain"],
     "modules": [
       "server/providers/terrain.js",
-      "src/data/terrainHeightsProxy.js"
+      "server/providers/common/cache.js",
+      "src/data/terrainHeightsProxy.js",
+      "src/sources/httpBody.js"
     ],
     "external": []
   },
   "terrain-source": {
     "exports": ["./sources/terrain"],
-    "modules": ["src/data/terrainHeightsProxy.js"],
+    "modules": ["src/data/terrainHeightsProxy.js", "src/sources/httpBody.js"],
     "external": []
   },
   "traffic-provider": {
     "runtime": "node",
     "exports": ["./server/providers/traffic"],
-    "modules": ["server/providers/traffic.js", "src/data/tomtomTiles.js"],
+    "modules": [
+      "server/providers/traffic.js",
+      "server/providers/common/http.js",
+      "src/data/tomtomTiles.js",
+      "src/sources/httpBody.js"
+    ],
     "external": []
   },
   "traffic-source": {
@@ -130,7 +139,12 @@
   "firms-provider": {
     "runtime": "node",
     "exports": ["./server/providers/firms"],
-    "modules": ["server/providers/firms.js", "src/data/firmsCsv.js"],
+    "modules": [
+      "server/providers/firms.js",
+      "server/providers/common/http.js",
+      "src/data/firmsCsv.js",
+      "src/sources/httpBody.js"
+    ],
     "external": []
   },
   "gbfs-provider": {
@@ -163,14 +177,17 @@
       "server/providers/cctv/range.js",
       "server/providers/cctv/sources.js",
       "server/providers/cctv/stream.js",
+      "server/providers/common/cache.js",
       "server/providers/common/http.js",
+      "server/providers/common/rate-limit.js",
       "src/data/directionText.js",
       "server/providers/common/geo.js",
       "server/providers/places/google-key.js",
       "scripts/google-server-key.mjs",
       "src/data/cctvFootprint.js",
       "src/sources/cctvTypes.js",
-      "src/sources/httpBody.js"
+      "src/sources/httpBody.js",
+      "src/sources/rateLimit.js"
     ],
     "external": []
   },
@@ -264,6 +281,7 @@
     "exports": ["./server/providers/openai"],
     "modules": [
       "src/hudLayoutPolicy.js",
+      "server/providers/common/http.js",
       "server/providers/common/rate-limit.js",
       "server/providers/common/request.js",
       "server/providers/common/source-root.js",
@@ -283,6 +301,7 @@
       "src/voice/voiceCost.js",
       "src/voice/actionSchemas.js",
       "server/providers/openai/toolDescriptions.js",
+      "src/sources/httpBody.js",
       "src/sources/rateLimit.js"
     ],
     "external": []
@@ -601,6 +620,7 @@
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
       "src/ui/scenes.js",
+      "src/ui/shareFallback.js",
       "src/ui/shareRestoration.js",
       "src/ui/shellElements.js",
       "src/ui/shellFeedback.js",
@@ -1334,6 +1354,7 @@
       "src/app/constructCatalog.js",
       "src/app/controls.js",
       "src/app/data.js",
+      "src/app/errorCapture.js",
       "src/app/errors.js",
       "src/app/layerPresentation.js",
       "src/app/layers/aisLiveVessels.js",
@@ -1444,7 +1465,6 @@
       "src/data/local_data/neighborhoods/san-francisco.json",
       "src/data/manager.js",
       "src/data/meshFloorSampler.js",
-      "src/data/militaryAwareness.js",
       "src/data/militaryAwarenessEngine.js",
       "src/data/militaryFlights.js",
       "src/data/militaryInstallationData.js",
@@ -1838,6 +1858,7 @@
       "src/ui/sceneControls.js",
       "src/ui/scenePresentation.js",
       "src/ui/scenes.js",
+      "src/ui/shareFallback.js",
       "src/ui/shareRestoration.js",
       "src/ui/shellElements.js",
       "src/ui/shellFeedback.js",
@@ -1900,7 +1921,6 @@
       "src/sources/httpBody.js",
       "src/sources/nominatim.js",
       "src/app/layers/transit.js",
-      "src/data/transit.js",
       "src/data/transitFeeds.js",
       "src/data/transitIcons.js",
       "src/data/transitPresetStyle.js",
@@ -2919,68 +2939,6 @@
       "src/sources/transitHistory.js"
     ],
     "external": ["pbf"]
-  },
-  "transit-standalone": {
-    "exports": ["./layers/transit/standalone"],
-    "modules": [
-      "src/cyberSonar.js",
-      "src/app/sourceSlot.js",
-      "src/celestialRing.js",
-      "src/data/cameraSensitivity.js",
-      "src/data/contactPlayback.js",
-      "src/data/contactTrailRenderer.js",
-      "src/data/dataCredits.js",
-      "src/data/detectionCohort.js",
-      "src/data/detectionPolicy.js",
-      "src/data/geoid.js",
-      "src/data/groundFloor.js",
-      "src/data/gtfsRealtime.js",
-      "src/data/iconOrientation.js",
-      "src/data/inputOwnership.js",
-      "src/data/labelArbiter.js",
-      "src/data/meshFloorSampler.js",
-      "src/data/pickRegistry.js",
-      "src/data/spriteOrder.js",
-      "src/data/terrainHeights.js",
-      "src/data/transit.js",
-      "src/data/transitFeeds.js",
-      "src/data/transitIcons.js",
-      "src/data/transitPresetStyle.js",
-      "src/data/transitProxy.js",
-      "src/layers/transit/controls.js",
-      "src/layers/transit/height.js",
-      "src/layers/transit/index.js",
-      "src/layers/transit/ingestion.js",
-      "src/layers/transit/lifecycle.js",
-      "src/layers/transit/movement.js",
-      "src/layers/transit/policy.js",
-      "src/layers/transit/qaMetrics.js",
-      "src/layers/transit/queries.js",
-      "src/layers/transit/rendering.js",
-      "src/layers/transit/selection.js",
-      "src/layers/transit/state.js",
-      "src/layers/transit/testing.js",
-      "src/layers/transit/trails.js",
-      "src/layers/transit/viewport.js",
-      "src/overlays/worldOverlay.js",
-      "src/overlays/worldOverlayDraw.js",
-      "src/overlays/worldOverlayTokens.js",
-      "src/renderGovernor.js",
-      "src/services/application.js",
-      "src/services/groundFloor.js",
-      "src/services/meshFloorSampler.js",
-      "src/services/requests.js",
-      "src/services/terrainHeights.js",
-      "src/sources/sourceSlot.js",
-      "src/layers/transit/source.js",
-      "src/sources/transitHistory.js",
-      "src/sources/featureGeometry.js",
-      "src/sources/overpassFeaturesRecords.js",
-      "src/sources/overpassFeatures.js",
-      "src/sources/featureSource.js",
-      "src/sources/capability.js"
-    ],
-    "external": ["cesium", "egm96-universal", "pbf"]
   },
   "transit-layer": {
     "exports": ["./layers/transit"],

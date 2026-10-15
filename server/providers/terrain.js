@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
+import { createLruCache } from './common/cache.js';
 import {
   fetchTerrainChunkWithRetry,
   parseTerrainPoints,
@@ -34,9 +35,14 @@ export function terrainHeightsProxy() {
   // that range.
   const UPSTREAM_CHUNK = 64;
   const MAX_POINTS = 2000;
+  // Points are client-chosen 5dp keys, so the memory cache (and the disk file
+  // flushed from it) needs a ceiling. 200k entries is ~100 full requests of
+  // distinct points; the resolver reads every point it serves, so the entries
+  // a session keeps revisiting stay while idle ones age out first.
+  const MEM_MAX_POINTS = 200_000;
 
-  /** @type {Map<string, {at:number, result:object}>} keyed by canonical 5dp lon/lat. */
-  const mem = new Map();
+  /** Keyed by canonical 5dp lon/lat; entry TTL/staleness stays with the resolver. */
+  const mem = createLruCache({ max: MEM_MAX_POINTS });
   /** @type {Map<string, Promise<Array<object>>>} single-flight per missing-point subset. */
   const inflight = new Map();
   let diskLoaded = false;
@@ -55,15 +61,15 @@ export function terrainHeightsProxy() {
           ? parsed.points
           : null;
       if (pointEntries) {
-        for (const [key, entry] of Object.entries(pointEntries)) {
-          if (
+        // Oldest first so an oversized file keeps its newest points.
+        const entries = Object.entries(pointEntries).filter(
+          ([, entry]) =>
             entry &&
             Number.isFinite(entry.at) &&
-            validTerrainResult(entry.result)
-          ) {
-            mem.set(key, entry);
-          }
-        }
+            validTerrainResult(entry.result),
+        );
+        entries.sort((a, b) => a[1].at - b[1].at);
+        for (const [key, entry] of entries) mem.set(key, entry, entry.at);
       } else if (parsed && typeof parsed === 'object') {
         // One-time migration from the former raw-batch cache. Zip only real,
         // positionally present results; an absent value never becomes height 0.
@@ -82,7 +88,7 @@ export function terrainHeightsProxy() {
             const key = terrainPointKey(points[i]);
             const existing = mem.get(key);
             if (!existing || entry.at > existing.at)
-              mem.set(key, { at: entry.at, result });
+              mem.set(key, { at: entry.at, result }, entry.at);
           }
         }
         diskDirty = mem.size > 0;

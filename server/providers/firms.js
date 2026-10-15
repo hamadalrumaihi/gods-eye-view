@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
+import { fetchBounded } from './common/http.js';
 import { filterTrailing24h, parseFirmsCsv } from '../../src/data/firmsCsv.js';
 
 /**
@@ -37,6 +38,10 @@ export function firmsProxy() {
   ];
   const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
   const CACHE_PATH = path.join(CACHE_DIR, 'firms.json');
+  /** A two-day worldwide VIIRS CSV runs to tens of MB in fire season. */
+  const SOURCE_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+  /** mapkey_status is a one-line JSON object. */
+  const STATUS_MAX_RESPONSE_BYTES = 64 * 1024;
 
   /** @type {?{at: number, sources: Array<object>, fires: Array<object>}} */
   let mem = null;
@@ -83,9 +88,13 @@ export function firmsProxy() {
    */
   async function fetchSource(key, source) {
     const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${source}/world/2`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+    const { response: res, body } = await fetchBounded(fetch, url, {
+      timeoutMs: 60_000,
+      maxBytes: SOURCE_MAX_RESPONSE_BYTES,
+      readErrorBody: false,
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const records = parseFirmsCsv(await res.text());
+    const records = parseFirmsCsv(body);
     if (records === null) throw new Error('non-CSV upstream response');
     return records;
   }
@@ -146,9 +155,13 @@ export function firmsProxy() {
       statusInflight = (async () => {
         try {
           const url = `https://firms.modaps.eosdis.nasa.gov/mapserver/mapkey_status/?MAP_KEY=${encodeURIComponent(key)}`;
-          const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+          const { response: res, body } = await fetchBounded(fetch, url, {
+            timeoutMs: 10_000,
+            maxBytes: STATUS_MAX_RESPONSE_BYTES,
+            as: 'json',
+            readErrorBody: false,
+          });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const body = await res.json();
           const used = Number(body?.current_transactions);
           const limit = Number(body?.transaction_limit);
           return Number.isFinite(used) && Number.isFinite(limit)

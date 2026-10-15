@@ -41,8 +41,13 @@ class Element {
   replaceChildren(...children) {
     this.children = children;
   }
-  matches() {
-    return ['INPUT', 'SELECT', 'TEXTAREA'].includes(this.tagName);
+  matches(selector) {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(this.tagName)) return true;
+    const editable = this.attributes.get('contenteditable');
+    return (
+      selector.includes('[contenteditable') &&
+      (editable === '' || editable === 'true')
+    );
   }
 }
 
@@ -119,9 +124,34 @@ test('the supplied search target retains editing even without form markup', () =
   assert.deepEqual(f.calls, [['dismissSearch']]);
 });
 
-test('shortcut extraction does not change repeat or modifier policy', () => {
+test('browser chords and held keys never reach an action', () => {
   const f = shortcuts();
-  f.press('h', new Element(), { repeat: true, ctrlKey: true });
+  // Cmd/Ctrl+C is copy, Cmd+D bookmarks, Cmd+F finds — none toggles a layer.
+  f.press('c', new Element(), { metaKey: true });
+  f.press('c', new Element(), { ctrlKey: true });
+  f.press('d', new Element(), { metaKey: true });
+  f.press('f', new Element(), { metaKey: true });
+  f.press('h', new Element(), { altKey: true });
+  f.press('1', new Element(), { ctrlKey: true });
+  f.press('h', new Element(), { repeat: true });
+  assert.deepEqual(f.calls, []);
+  f.press('c');
+  assert.deepEqual(f.calls, [['toggleCctv']]);
+});
+
+test('editable regions keep native typing like form controls', () => {
+  const f = shortcuts();
+  for (const value of ['', 'true']) {
+    const region = new Element('DIV');
+    region.setAttribute('contenteditable', value);
+    for (const key of ['1', 'h', 'c', 'f']) f.press(key, region);
+    assert.deepEqual(f.calls, []);
+    f.press('Escape', region);
+    assert.deepEqual(f.calls.pop(), ['dismissSearch']);
+  }
+  const plain = new Element('DIV');
+  plain.setAttribute('contenteditable', 'false');
+  f.press('h', plain);
   assert.deepEqual(f.calls, [['toggleHud']]);
 });
 

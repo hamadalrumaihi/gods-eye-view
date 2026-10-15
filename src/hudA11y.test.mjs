@@ -29,3 +29,24 @@ test('generated style sliders use the visible parameter label as their name', ()
   assert.match(parameters, /label\.textContent\s*=\s*metadata\.label;/);
   assert.match(parameters, /slider\.setAttribute\(['"]aria-label['"],\s*metadata\.label\)/);
 });
+
+test('visual preset and display toggles expose aria-pressed that matches their active state', () => {
+  const styleButtons = html.match(/<button class="style-btn[^"]*"[^>]*>/g) || [];
+  assert.equal(styleButtons.length, 7);
+  for (const tag of styleButtons) {
+    const active = /class="style-btn active"/.test(tag);
+    assert.ok(tag.includes(`aria-pressed="${active}"`), `${tag} reports aria-pressed="${active}"`);
+  }
+  for (const id of ['hud-toggle', 'clean-view-toggle', 'bloom-toggle', 'sharpen-toggle']) {
+    const tag = html.match(new RegExp(`<button\\b[^>]*\\bid="${id}"[^>]*>`))?.[0];
+    assert.ok(tag, `${id} exists`);
+    assert.ok(tag.includes('aria-pressed="false"'), `${id} ships unpressed`);
+    assert.doesNotMatch(tag, /class="[^"]*\bactive\b/, `${id} ships without the active class`);
+  }
+});
+
+test('the Cockpit HUD can take programmatic focus and both dialogs are modal', () => {
+  assert.match(html, /<section id="cockpit-hud"[^>]*tabindex="-1"[^>]*hidden>/);
+  assert.match(html, /<aside id="first-run-launcher" role="dialog" aria-modal="true"/);
+  assert.match(html, /<aside id="key-setup" role="dialog" aria-modal="true"/);
+});

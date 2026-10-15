@@ -40,6 +40,9 @@ export class RealtimeInput {
     this.shortcutKeyUpHandler = null;
     this.shortcutBlurHandler = null;
     this.shortcutVisibilityHandler = null;
+    this.shortcutPageHideHandler = null;
+    // An open-mic session muted because the tab was hidden; restored on return.
+    this.microphoneMutedWhileHidden = false;
   }
   get ui() {
     return this.readUi();
@@ -140,7 +143,27 @@ export class RealtimeInput {
       this.resetPushToTalkGesture();
     };
     this.shortcutVisibilityHandler = () => {
-      if (document.visibilityState === 'hidden') this.shortcutBlurHandler();
+      if (document.visibilityState === 'hidden') {
+        this.shortcutBlurHandler();
+        // A hidden tab must not keep a hot microphone. The release above
+        // already muted a push-to-talk session; mute an open-mic session here
+        // and remember to restore it when the tab returns.
+        if (this.isActive() && !this.pushToTalkMode) {
+          this.microphoneMutedWhileHidden = true;
+          this.setMicrophoneEnabled(false);
+        }
+        return;
+      }
+      if (!this.microphoneMutedWhileHidden) return;
+      this.microphoneMutedWhileHidden = false;
+      if (this.isActive() && !this.pushToTalkMode)
+        this.setMicrophoneEnabled(true);
+    };
+    this.shortcutPageHideHandler = () => {
+      // Navigation or unload tears the session down so the microphone and
+      // peer connection never outlive the page. The status is left as-is: the
+      // document is going away and owns no further presentation.
+      this.stop({ preserveStatus: true });
     };
     // Observe before custom controls call preventDefault for their own Space
     // behavior. This lets the same physical hold cross the 500ms voice
@@ -152,6 +175,7 @@ export class RealtimeInput {
       'visibilitychange',
       this.shortcutVisibilityHandler,
     );
+    window.addEventListener('pagehide', this.shortcutPageHideHandler);
   }
 
   /** Cancels an unclaimed Space hold before it starts voice. */
@@ -376,6 +400,7 @@ export class RealtimeInput {
     this.pushToTalkMode = false;
     this.pushToTalkKeyHeld = false;
     this.spaceKeyHeld = false;
+    this.microphoneMutedWhileHidden = false;
     this.resetPushToTalkGesture();
     if (this.ui?.root) {
       delete this.ui.root.dataset.pushToTalk;
@@ -400,9 +425,12 @@ export class RealtimeInput {
         this.shortcutVisibilityHandler,
       );
     }
+    if (this.shortcutPageHideHandler)
+      window.removeEventListener('pagehide', this.shortcutPageHideHandler);
     this.shortcutKeyDownHandler = null;
     this.shortcutKeyUpHandler = null;
     this.shortcutBlurHandler = null;
     this.shortcutVisibilityHandler = null;
+    this.shortcutPageHideHandler = null;
   }
 }

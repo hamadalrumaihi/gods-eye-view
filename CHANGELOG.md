@@ -1,5 +1,79 @@
 # Changelog
 
+## Unreleased — audit quick wins
+
+- **Earthquakes and Fire Perimeters stay enabled when their source is down.**
+  Both layers returned `false` from `update()` on a failed fetch, which the
+  layer lifecycle reads as "reject the transition", so the toggle silently
+  reverted whenever USGS or NIFC was unreachable. They now report the failure
+  through `getStats().error` (shown as the row's refresh error) and keep the
+  layer on, like Cyclones.
+- **Periodic layer polling pauses while the tab is hidden.** Manager-owned
+  refresh ticks are skipped while `document.hidden`; each still-enabled layer
+  runs one catch-up refresh when the tab returns. Explicit refreshes are
+  unaffected. Layers that read local hardware opt out with
+  `pollWhileHidden = true` (Local ADS-B).
+- **Voice: no hot microphone behind a hidden tab.** Hiding the tab mutes an
+  open-mic session and restores it on return; push-to-talk keeps its held-key
+  contract. Navigating away (`pagehide`) tears the session down so the peer
+  connection and microphone never outlive the page.
+- **`window.__godsEyeView.diagnostics.errors()`** returns the newest 200
+  uncaught errors and unhandled rejections (`clearErrors()` empties it). Only
+  message and stack text is kept; credential-shaped query parameters are
+  redacted.
+- **Street View fallback only for registered cameras.** `/api/cctv/frame/<id>`
+  requests a billed Street View frame only for a camera in the catalog, at its
+  registered position, with clamped pose overrides, a five-minute per-camera
+  cache and the shared Google per-IP limiter. An unknown id gets the
+  placeholder and costs nothing.
+- **Per-IP cost limiters are on by default.** `GEV_RATELIMIT_OPENAI_PER_MIN`
+  defaults to 30 and `GEV_RATELIMIT_GOOGLE_PER_MIN` to 120 requests per minute
+  per IP (the Pinokio defaults). A self-hosted install that relied on unlimited
+  OpenAI or Google calls now receives sanitized 429s past those figures unless
+  it sets `0` or `off`. The Google window is shared by Places and Street View.
+- **Every proxied upstream read has a deadline and a byte cap** through one
+  shared `fetchBounded` helper (OpenSky, adsb.lol, CelesTrak, TomTom, FIRMS,
+  adsbdb, terrain, Realtime token, HUD summary, Places). `/api/adsblol/mil` no
+  longer relays a non-OK upstream body verbatim. Provider caches are bounded
+  LRUs (adsbdb 5,000 routes and aircraft, terrain 200,000 points) and CelesTrak
+  negative-caches failed groups for 60 s.
+- **Google Places errors are fixed strings.** Upstream wording never reaches the
+  client; the detail goes to the server log.
+- **`/api/realtime/debug-log` is development-only** and requires
+  `Content-Type: application/json`. Provider Settings saves are serialized;
+  `build/vite.js` also denies the staged credential temp files.
+- **`npm test` discovers `server/` tests** and accepts `--filter`, `--list` and
+  pass-through `node --test` arguments; the Windows CI job uses the filter
+  instead of a hand-listed file set. Dependabot is configured for npm and
+  GitHub Actions. `ws` is a runtime dependency.
+- **Removed dead compatibility code:** `src/ui.js` and the `src/data/transit.js`,
+  `militaryAwareness.js` and `flowTiles.js` facades, with the
+  `./layers/transit/standalone` package export (breaking for any external
+  consumer of that export; `./layers/transit` and `./application/layers`
+  remain).
+- **Keyboard chords no longer trigger map shortcuts.** Cmd/Ctrl+C, Cmd+D and
+  Cmd+F are left to the browser instead of toggling CCTV, cycling detection or
+  hiding the Data Layers panel; held keys do not autorepeat shortcuts; `F`
+  collapses the panel with its header visible.
+- **Share works without the clipboard.** When `navigator.clipboard` is
+  unavailable or denied, the link appears in a small dialog with the URL
+  pre-selected, a COPY button and Escape to close.
+- **ADD KEY on key-required layers.** A row waiting on a provider key shows an
+  ADD KEY chip that opens Provider Settings on that key's field (development
+  server only).
+- **RESET PANELS in DISPLAY** returns every panel to its default position and
+  open/closed state without the console.
+- **CCTV COVERAGE is an OFF / ON / VIEWSHED segmented control** instead of a
+  cycling button.
+- **Accessibility:** visual presets and the HUD, clean view, bloom and sharpen
+  toggles expose `aria-pressed`; entering Cockpit focuses the cockpit HUD and
+  leaving returns focus to the COCKPIT control; the first-run and Provider
+  Settings dialogs are modal (`aria-modal`, `inert` siblings); the viewport meta
+  sets `viewport-fit=cover` so safe-area insets apply on notched screens.
+- README: the voice tool count is 30, the keyboard list names `O`, `V` and `F`,
+  and the Provider Settings section describes `?setup=1` and the ADD KEY
+  shortcut.
+
 - Public Overpass instances are no longer used by default. Street Traffic
   roads come from TomTom flow tiles, OpenFreeMap vector tiles, or both, chosen
   on the layer row (TomTom / OSM / Hybrid) or with `?trafficRoads=`. With a

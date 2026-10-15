@@ -33,7 +33,7 @@
  * Cross-check at release time (a wrong rate silently mis-sizes the spend cap,
  * and a wrong model id fails the session at connect time):
  *   - `standard` MUST stay in sync with OPENAI_REALTIME_MODEL / the
- *     OPENAI_REALTIME_MODEL_DEFAULT constant in vite.config.js.
+ *     VOICE_MODELS defaults in server/providers/openai/constants.js.
  *   - `mini` has no in-repo history — it is new here. OpenAI publishes both
  *     `gpt-realtime-2.1-mini` (current, used below) and an older
  *     `gpt-realtime-mini`; there is NO `gpt-realtime-2-mini`. If the id ever

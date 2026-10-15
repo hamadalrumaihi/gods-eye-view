@@ -36,7 +36,20 @@ export function createBrowserViteConfig({
           ? true
           : ['localhost', '127.0.0.1', '.local'],
       fs: {
-        deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/ENVIRONMENT'],
+        // Provider Settings stages a credential store as a same-directory
+        // `.<name>.<random>.tmp` before renaming it into place; the temp file
+        // must be as unreachable as the store it becomes.
+        deny: [
+          '.env',
+          '.env.*',
+          '*.{crt,pem}',
+          '**/.git/**',
+          '**/ENVIRONMENT',
+          '**/.ENVIRONMENT.*.tmp',
+          // The `.env` store stages as `..env.<random>.tmp`, which `.env.*`
+          // does not match.
+          '**/..env.*.tmp',
+        ],
       },
       // These headers protect the document containing Provider Settings.
       headers: {

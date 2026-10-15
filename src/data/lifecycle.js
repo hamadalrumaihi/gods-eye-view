@@ -59,6 +59,23 @@ function cancelPendingLayerRestore(entry, origin, reason) {
   }
 }
 
+const DEV_RUNTIME = import.meta.env?.DEV === true;
+
+/**
+ * Dev-only contract check. `update()` returning false means "reject this
+ * lifecycle transition", not "the fetch failed". A layer that also reports an
+ * error through getStats() almost certainly meant the latter, and should
+ * return true with the failure in its stats instead (see cyclones).
+ */
+function warnRejectedUpdateWithError(layerId, stats) {
+  if (!DEV_RUNTIME) return;
+  if (!stats?.error && !stats?.lastError) return;
+  console.warn(
+    `[Data] ${layerId} update() returned false while getStats() reports an error; ` +
+      'false rejects the lifecycle transition — return true and expose the failure through getStats() instead',
+  );
+}
+
 function refreshFailureFromStats(stats, label) {
   const specific = stats?.error || stats?.lastError;
   if (specific)
@@ -74,7 +91,18 @@ function refreshFailureFromStats(stats, label) {
  * for real-time data overlays on the CesiumJS globe.
  */
 export class LayerLifecycle {
-  constructor(viewer, { allowQaRegistration = false } = {}) {
+  /**
+   * @param {object} viewer Viewer handed to every layer module.
+   * @param {object} [options]
+   * @param {boolean} [options.allowQaRegistration] Permit post-seal QA layers.
+   * @param {{ isHidden: () => boolean, subscribe: (callback: () => void) => (() => void) }|null} [options.visibility]
+   *   Host visibility. While hidden, periodic refreshes are deferred and each
+   *   enabled layer runs one refresh when the host is visible again, unless
+   *   its module sets `pollWhileHidden = true`. Omitted in portable/headless
+   *   use, where polling never pauses. The host wires the browser document
+   *   here so this module stays free of platform globals.
+   */
+  constructor(viewer, { allowQaRegistration = false, visibility = null } = {}) {
     this.viewer = viewer;
     this._activityListeners = new Set();
     this.layers = new Map(); // id → { module, enabled, initialized, intervalId, lifecycleState, lifecycleUncertain }
@@ -86,6 +114,12 @@ export class LayerLifecycle {
     this._registrationDispositions = null;
     this._allowQaRegistration = allowQaRegistration === true;
     this._qaLayerIds = new Set();
+    this._visibility = visibility;
+    // One subscription per manager, released in destroyAll().
+    this._unsubscribeVisibility =
+      typeof visibility?.subscribe === 'function'
+        ? visibility.subscribe(() => this._resumeHiddenRefreshes())
+        : null;
   }
 
   register(layerModule) {
@@ -133,6 +167,9 @@ export class LayerLifecycle {
       refreshing: false,
       refreshEpoch: 0,
       managerRefreshError: null,
+      // A periodic tick skipped because the host was hidden; the layer runs
+      // one refresh when the host is visible again.
+      pendingHiddenRefresh: false,
       // `enabled` is authoritative settled visibility. Awaited lifecycle work
       // is reported separately so callers never mistake activation for ON or
       // teardown for OFF before the transaction settles.
@@ -284,13 +321,13 @@ export class LayerLifecycle {
       // Even a rejected/partial update may have changed the data exposed by
       // the layer. Publish before classifying its result so observers see it.
       this._publishActivity({ type: 'data-updated', layerId });
-      if (result === false)
+      const stats = this._moduleStats(entry);
+      if (result === false) {
         failure = lifecycleRejectedError(layerId, 'refresh');
+        warnRejectedUpdateWithError(layerId, stats);
+      }
       if (!failure)
-        failure = refreshFailureFromStats(
-          this._moduleStats(entry),
-          entry.module.name || layerId,
-        );
+        failure = refreshFailureFromStats(stats, entry.module.name || layerId);
     } catch (error) {
       failure = error;
     }
@@ -516,6 +553,20 @@ export class LayerLifecycle {
     }
   }
 
+  /**
+   * Arm the manager-owned refresh loop for a settled-enabled layer.
+   *
+   * Return contract for `module.update()`: `false` means "reject the lifecycle
+   * transition" (the enable transaction reverts through disable(), a periodic
+   * tick publishes `refresh-failed`); it does not mean "the fetch failed". A
+   * layer whose source is unavailable keeps its lifecycle settled by returning
+   * `true` and exposing the failure through `getStats().error`, which the loop
+   * surfaces as `managerRefreshError`. Only aborted, superseded or
+   * already-disabled updates return `false`.
+   *
+   * Ticks are skipped while the host reports itself hidden (see the
+   * `visibility` constructor option); explicit refreshLayer() calls are not.
+   */
   _armUpdateLoop(layerId, entry) {
     const configuredRefreshInterval = Number(entry.module.refreshInterval);
     const updateInterval = Number(entry.module.updateInterval);
@@ -525,8 +576,15 @@ export class LayerLifecycle {
         : updateInterval > 0
           ? updateInterval
           : 0;
+    entry.pendingHiddenRefresh = false;
     if (refreshInterval > 0) {
       entry.intervalId = setInterval(() => {
+        // A hidden document polls for nobody. Remember the skipped tick so
+        // the layer catches up once on return instead of waiting a period.
+        if (this._deferWhileHidden(entry)) {
+          entry.pendingHiddenRefresh = true;
+          return;
+        }
         void this._runPeriodicUpdate(layerId, entry);
       }, refreshInterval);
     } else if (updateInterval === 0) {
@@ -534,6 +592,28 @@ export class LayerLifecycle {
         if (!entry.enabled) return;
         this._publishActivity({ type: 'status' });
       }, entry.module.statsRefreshInterval || 1000);
+    }
+  }
+
+  _deferWhileHidden(entry) {
+    return (
+      this._visibility?.isHidden?.() === true &&
+      entry.module.pollWhileHidden !== true
+    );
+  }
+
+  /** Run the one refresh each still-enabled layer skipped while hidden. */
+  _resumeHiddenRefreshes() {
+    if (this._visibility?.isHidden?.() === true) return;
+    for (const [layerId, entry] of this.layers) {
+      if (!entry.pendingHiddenRefresh) continue;
+      entry.pendingHiddenRefresh = false;
+      if (
+        entry.enabled &&
+        entry.lifecycleState === 'enabled' &&
+        !entry.destroying
+      )
+        void this._runPeriodicUpdate(layerId, entry);
     }
   }
 
@@ -995,7 +1075,10 @@ export class LayerLifecycle {
       this._setVisibilityIntentPhase(entry, intentEpoch, 'update');
       try {
         const updated = await entry.module.update(this.viewer, { signal });
-        if (updated === false) throw lifecycleRejectedError(layerId, 'update');
+        if (updated === false) {
+          warnRejectedUpdateWithError(layerId, this._moduleStats(entry));
+          throw lifecycleRejectedError(layerId, 'update');
+        }
       } catch (e) {
         if (signal?.aborted || isAbortError(e)) {
           return finishCancelledEnable(
@@ -2175,6 +2258,9 @@ export class LayerLifecycle {
    * Should be called when the viewer is being torn down.
    */
   async destroyAll() {
+    if (typeof this._unsubscribeVisibility === 'function')
+      this._unsubscribeVisibility();
+    this._unsubscribeVisibility = null;
     this._publishActivity({ type: 'destroy-all' });
     for (const layerId of [...this.layers.keys()]) {
       await this.destroyLayer(layerId);

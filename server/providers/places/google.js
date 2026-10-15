@@ -2,23 +2,67 @@ import {
   googleServerApiKey,
   keylessGooglePlacesResponse,
 } from './google-key.js';
-import { makeOptInRateLimiter, clientKey } from '../common/rate-limit.js';
+import { googleRateLimiter, clientKey } from '../common/rate-limit.js';
+import { fetchBounded } from '../common/http.js';
 import {
   projectNearbyPlaces,
   projectTextSearchPlaces,
 } from '../../../src/data/placeProviderPayloads.js';
 
-// Construct lazily after the standalone environment has loaded.
-// undefined = not built yet; null = unlimited; fn = active limiter
-let _googleRateLimiter;
+/** Deadline for one Places call, headers plus body. */
+const PLACES_TIMEOUT_MS = 10_000;
+/** Twenty places with the field mask below are a few tens of KB. */
+const PLACES_MAX_RESPONSE_BYTES = 1024 * 1024;
+/** The one message a client sees for any upstream or transport failure. */
+const PLACES_FAILED = 'Google Places request failed';
 
-/** Google cost endpoint (nearby-places). Null = unlimited (default). */
-function googleRateLimiter() {
-  if (_googleRateLimiter === undefined)
-    _googleRateLimiter = makeOptInRateLimiter(
-      process.env.GEV_RATELIMIT_GOOGLE_PER_MIN,
+/**
+ * POST a Places request and parse its JSON. The upstream's own error wording
+ * (quota phrasing, project ids) stays in the server log: the response to the
+ * browser carries only PLACES_FAILED.
+ *
+ * @param {typeof fetch} fetchImpl
+ * @param {string} url
+ * @param {string} apiKey
+ * @param {string[]} fieldMask
+ * @param {object} payload
+ * @returns {Promise<{response: Response, data: object}>}
+ */
+async function postPlaces(fetchImpl, url, apiKey, fieldMask, payload) {
+  const { response, body } = await fetchBounded(fetchImpl, url, {
+    method: 'POST',
+    redirect: 'error',
+    timeoutMs: PLACES_TIMEOUT_MS,
+    maxBytes: PLACES_MAX_RESPONSE_BYTES,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': fieldMask.join(','),
+    },
+    body: JSON.stringify(payload),
+  });
+  let data = {};
+  try {
+    data = JSON.parse(body);
+  } catch {
+    data = {};
+  }
+  if (!response.ok) {
+    const detail = String(data?.error?.message || '').slice(0, 200);
+    console.warn(
+      `[google-places] upstream HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
     );
-  return _googleRateLimiter;
+  }
+  return { response, data };
+}
+
+/** Write one JSON answer with the `places` contract every response keeps. */
+function sendPlaces(res, statusCode, payload, cacheControl) {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+  res.end(JSON.stringify(payload));
 }
 
 /** Validate raw lat/lon presence and WGS84 bounds before consuming request quota. */
@@ -80,9 +124,9 @@ export function googlePlacesContextProxy({
       }
       const { latitude, longitude } = coordinates;
 
-      // Opt-in per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). No-op when unset.
-      // Inlined (not the shared helper) so the 429 body keeps this endpoint's
-      // `places: []` contract that the client expects on every error response.
+      // Per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN, default 120/min; `0`/`off`
+      // opts out). Inlined (not the shared helper) so the 429 body keeps this
+      // endpoint's `places: []` contract that the client expects on every error.
       const _grl = googleRateLimiter();
       if (_grl && !_grl(clientKey(req))) {
         res.statusCode = 429;
@@ -98,61 +142,44 @@ export function googlePlacesContextProxy({
       );
 
       try {
-        const response = await fetchImpl(
+        const { response, data } = await postPlaces(
+          fetchImpl,
           endpoints.nearby ||
             'https://places.googleapis.com/v1/places:searchNearby',
+          apiKey,
+          [
+            'places.id',
+            'places.displayName',
+            'places.formattedAddress',
+            'places.shortFormattedAddress',
+            'places.location',
+            'places.primaryType',
+            'places.primaryTypeDisplayName',
+            'places.types',
+          ],
           {
-            method: 'POST',
-            redirect: 'error',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': apiKey,
-              'X-Goog-FieldMask': [
-                'places.id',
-                'places.displayName',
-                'places.formattedAddress',
-                'places.shortFormattedAddress',
-                'places.location',
-                'places.primaryType',
-                'places.primaryTypeDisplayName',
-                'places.types',
-              ].join(','),
-            },
-            body: JSON.stringify({
-              maxResultCount: 20,
-              rankPreference: 'DISTANCE',
-              locationRestriction: {
-                circle: {
-                  center: { latitude, longitude },
-                  radius: radiusM,
-                },
+            maxResultCount: 20,
+            rankPreference: 'DISTANCE',
+            locationRestriction: {
+              circle: {
+                center: { latitude, longitude },
+                radius: radiusM,
               },
-            }),
+            },
           },
         );
-        const data = await response.json().catch(() => ({}));
         const places = projectNearbyPlaces(data, latitude, longitude);
-
-        res.statusCode = response.ok ? 200 : response.status;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Cache-Control', 'private, max-age=300');
-        res.end(
-          JSON.stringify({
-            places,
-            error: response.ok
-              ? null
-              : data.error?.message || 'Google Places request failed',
-          }),
+        sendPlaces(
+          res,
+          response.ok ? 200 : response.status,
+          { places, error: response.ok ? null : PLACES_FAILED },
+          'private, max-age=300',
         );
       } catch (error) {
-        res.statusCode = 502;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.end(
-          JSON.stringify({
-            error: error?.message || 'Google Places request failed',
-            places: [],
-          }),
-        );
+        // A transport fault names the upstream host or the cap; the client
+        // only needs to know the lookup failed.
+        console.warn('[google-places] nearby request failed');
+        sendPlaces(res, 502, { error: PLACES_FAILED, places: [] });
       }
     });
 
@@ -200,9 +227,9 @@ export function googlePlacesContextProxy({
       }
       const { latitude, longitude } = coordinates;
 
-      // Opt-in per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN). No-op when unset.
-      // Inlined (like nearby-places) so the 429 body keeps the `places: []`
-      // contract the client expects on every error response.
+      // Per-IP throttle (GEV_RATELIMIT_GOOGLE_PER_MIN, default 120/min; `0`/`off`
+      // opts out). Inlined (like nearby-places) so the 429 body keeps the
+      // `places: []` contract the client expects on every error response.
       const _grl = googleRateLimiter();
       if (_grl && !_grl(clientKey(req))) {
         res.statusCode = 429;
@@ -218,60 +245,41 @@ export function googlePlacesContextProxy({
       );
 
       try {
-        const response = await fetchImpl(
+        const { response, data } = await postPlaces(
+          fetchImpl,
           endpoints.textSearch ||
             'https://places.googleapis.com/v1/places:searchText',
+          apiKey,
+          [
+            'places.id',
+            'places.displayName',
+            'places.formattedAddress',
+            'places.location',
+            'places.viewport',
+            'places.primaryType',
+            'places.types',
+          ],
           {
-            method: 'POST',
-            redirect: 'error',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': apiKey,
-              'X-Goog-FieldMask': [
-                'places.id',
-                'places.displayName',
-                'places.formattedAddress',
-                'places.location',
-                'places.viewport',
-                'places.primaryType',
-                'places.types',
-              ].join(','),
-            },
-            body: JSON.stringify({
-              textQuery,
-              locationBias: {
-                circle: {
-                  center: { latitude, longitude },
-                  radius: radiusM,
-                },
+            textQuery,
+            locationBias: {
+              circle: {
+                center: { latitude, longitude },
+                radius: radiusM,
               },
-              maxResultCount: 5,
-            }),
+            },
+            maxResultCount: 5,
           },
         );
-        const data = await response.json().catch(() => ({}));
         const places = projectTextSearchPlaces(data, latitude, longitude);
-
-        res.statusCode = response.ok ? 200 : response.status;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Cache-Control', 'private, max-age=300');
-        res.end(
-          JSON.stringify({
-            places,
-            error: response.ok
-              ? null
-              : data.error?.message || 'Google Places request failed',
-          }),
+        sendPlaces(
+          res,
+          response.ok ? 200 : response.status,
+          { places, error: response.ok ? null : PLACES_FAILED },
+          'private, max-age=300',
         );
       } catch (error) {
-        res.statusCode = 502;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.end(
-          JSON.stringify({
-            error: error?.message || 'Google Places request failed',
-            places: [],
-          }),
-        );
+        console.warn('[google-places] text search request failed');
+        sendPlaces(res, 502, { error: PLACES_FAILED, places: [] });
       }
     });
   }

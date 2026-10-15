@@ -113,6 +113,7 @@ export class LayerPanel {
     hasRowControls,
     subscribeRowControls,
     onHiddenRefresh = () => {},
+    openKeySetup,
     weatherClock,
   }) {
     this.weatherClock = weatherClock;
@@ -124,6 +125,8 @@ export class LayerPanel {
     this.hasRowControls = hasRowControls;
     this.subscribeRowControls = subscribeRowControls;
     this.onHiddenRefresh = onHiddenRefresh;
+    this.openKeySetup =
+      typeof openKeySetup === 'function' ? openKeySetup : null;
     this._generation = 0;
     this._removers = [];
     this._destroyed = false;
@@ -155,6 +158,17 @@ export class LayerPanel {
     if (this._destroyed) return;
     this._recentImageryFactory = typeof factory === 'function' ? factory : null;
     this._mountRecentImagery();
+  }
+  /**
+   * Supply (or withdraw) the Provider Settings opener once the application
+   * knows whether that surface exists. Key-required rows show an ADD KEY chip
+   * only while an opener is attached; a preview build or LAN visitor has none.
+   * @param {((options: {focusKey: string}) => void) | null} open
+   */
+  attachKeySetup(open) {
+    if (this._destroyed) return;
+    this.openKeySetup = typeof open === 'function' ? open : null;
+    if (this._toggleContainer) this._refreshTogglePanel();
   }
   _mountRecentImagery() {
     this._recentImageryPanel?.destroy();
@@ -269,6 +283,7 @@ export class LayerPanel {
       const readout = Boolean(this._rowControlsFor(layer.id)?.readout);
       if (!readout) right.appendChild(count);
       right.appendChild(toggle);
+      this._syncKeyChip(right, layer);
       topRow.appendChild(left);
       topRow.appendChild(right);
 
@@ -497,6 +512,7 @@ export class LayerPanel {
       if (btn) {
         this._syncToggleButton(btn, layer);
       }
+      this._syncKeyChip(row.querySelector('.data-toggle-right'), layer);
 
       const count = row.querySelector('.data-count');
       if (count) {
@@ -631,6 +647,42 @@ export class LayerPanel {
       keyGuidance
         ? `${panelLabel(layer)}: ${button.textContent}. ${keyGuidance}`
         : `${panelLabel(layer)}: ${button.textContent}`,
+    );
+  }
+
+  /**
+   * Keep the ADD KEY chip beside a toggle a missing provider key holds back.
+   * The chip exists only while the key is missing AND an opener is attached:
+   * naming the key is guidance, but a button must lead somewhere. Reconciled
+   * in place so a refresh never drops focus from the chip.
+   * @param {HTMLElement|null} right The row's `.data-toggle-right` node.
+   * @param {object} layer Registered layer entry.
+   */
+  _syncKeyChip(right, layer) {
+    if (!right) return;
+    const existing = right.querySelector('.data-key-chip');
+    const guidance = layerKeyRequirementTooltip(layer);
+    if (!guidance || !this.openKeySetup) {
+      existing?.remove();
+      return;
+    }
+    const chip = existing || document.createElement('button');
+    if (!existing) {
+      chip.type = 'button';
+      chip.className = 'data-toggle-chip data-key-chip';
+      chip.textContent = 'ADD KEY';
+      chip.dataset.keyId = layer.requiresKeyId;
+      this._bind(chip, 'click', (event) => {
+        event.stopPropagation?.();
+        if (this._destroyed || !this.openKeySetup) return;
+        this.openKeySetup({ focusKey: String(layer.requiresKeyId) });
+      });
+      right.insertBefore(chip, right.querySelector('.data-toggle-btn'));
+    }
+    chip.title = guidance;
+    chip.setAttribute(
+      'aria-label',
+      `Add key for ${panelLabel(layer)}: ${guidance}`,
     );
   }
 

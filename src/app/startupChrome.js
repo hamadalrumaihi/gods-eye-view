@@ -8,6 +8,7 @@ export function startApplicationChrome({
   signal,
   initializeWelcome = initFirstRunExperience,
   initializeSettings,
+  onSettings,
 }) {
   let disposed = false;
   let firstRun;
@@ -39,9 +40,13 @@ export function startApplicationChrome({
     signal.aborted ? null : initializeSettings?.({ signal }),
   );
   // Own the pending initializer too; it must not reveal a dialog after abort.
-  void keySetup.catch(() =>
-    console.error('Provider settings initialization failed'),
-  );
+  void keySetup
+    .then((settings) => {
+      // The surface removes itself where it cannot work, so a null result
+      // means no opener: rows then show guidance without a dead button.
+      if (settings && !disposed && !signal.aborted) onSettings?.(settings);
+    })
+    .catch(() => console.error('Provider settings initialization failed'));
   return async () => {
     disposed = true;
     clearTimeout(delayTimer);

@@ -71,12 +71,15 @@ export function railFixture(onWrite = () => {}) {
           }
         },
         querySelector(selector) {
+          const layerId = selector.match(/^\[data-layer-id="([^"]+)"\]$/)?.[1];
           return find(
             this,
             (child) =>
               selector.startsWith('.')
                 ? child.className?.split(' ').includes(selector.slice(1))
-                : false,
+                : layerId
+                  ? child.dataset.layerId === layerId
+                  : false,
             false,
           );
         },

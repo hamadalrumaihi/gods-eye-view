@@ -5,6 +5,7 @@ import { initImageryBoxTool } from '../ui/imageryBoxTool.js';
 import { createRecentImageryPanel } from '../ui/recentImagery.js';
 import { initGevVoiceCommands } from '../voice/gevRealtime.js';
 import { installScopeMask, destroyScopeMask } from '../scopeMask.js';
+import { createErrorCapture } from './errorCapture.js';
 import {
   installRenderGovernor,
   getRenderGovernorDiagnostics,
@@ -92,8 +93,25 @@ export function createApplicationTools({
       imageryBoxTool?.destroy();
     });
   }
-  if (startChrome)
-    defer(startChrome({ loadingScreen, styleManager, dataManager, signal }));
+  if (startChrome) {
+    // Key-required layer rows get an ADD KEY chip only once Provider Settings
+    // proves it exists (dev server, loopback); withdrawn with the tools.
+    defer(() => data.presentation?.attachKeySetup?.(null));
+    defer(
+      startChrome({
+        loadingScreen,
+        styleManager,
+        dataManager,
+        signal,
+        onSettings: (settings) => {
+          if (typeof settings?.open !== 'function') return;
+          data.presentation?.attachKeySetup?.((options) =>
+            settings.open(options),
+          );
+        },
+      }),
+    );
+  }
   // Idle render governor: flips the scene into requestRenderMode whenever
   // nothing animates per frame. Installed AFTER every module above has had
   // its chance to register pre-install holds. (perf wave 2)
@@ -139,6 +157,11 @@ export function createApplicationTools({
   // loop burning behind a hidden tab. (perf wave 2 fix)
   syncVisibilitySuspension();
 
+  // Uncaught errors and unhandled rejections, bounded, for live gates and bug
+  // reports. Messages and stacks only; never payloads or key values.
+  const errorCapture = createErrorCapture();
+  defer(() => errorCapture.dispose());
+
   window.__godsEyeView = {
     viewer,
     styleManager,
@@ -152,6 +175,10 @@ export function createApplicationTools({
     getRenderGovernorDiagnostics,
     surfaceServices: operations.surface,
     requestRender: governorRequestRender,
+    diagnostics: {
+      errors: errorCapture.getEntries,
+      clearErrors: errorCapture.clear,
+    },
   };
   const debug = window.__godsEyeView;
   defer(() => {

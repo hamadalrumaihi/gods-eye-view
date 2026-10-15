@@ -54,6 +54,24 @@ const DEV_FRESH_EXTERNAL_KEYS_AT_BOOT = new Set(
 );
 
 /**
+ * Saves run one at a time, per process. Each save is a read-modify-write of
+ * the whole store, so two that overlap would have the later writer replace
+ * the earlier writer's key with the stale text it read. The store calls are
+ * synchronous today, which happens to prevent that; chaining every save
+ * behind the previous one makes it a contract instead of an accident, and
+ * holds across the in-process config re-evaluation that server.restart()
+ * performs (module state survives it).
+ */
+let saveQueue = Promise.resolve();
+
+/** Run `task` after every earlier save has settled; its own failure is returned, not inherited. */
+function serializeSave(task) {
+  const run = saveQueue.then(task, task);
+  saveQueue = run.catch(() => {});
+  return run;
+}
+
+/**
  * In-app key setup ("POWER UP" panel) — dev-server only.
  *
  * GET  /api/setup/status → which keys are configured, as presence plus a
@@ -74,6 +92,7 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot } = {}) {
   const respond = (res, statusCode, payload) => {
     res.statusCode = statusCode;
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     // A credential-status response must never be cached by a proxy or the disk
     // cache, and the surface must never be framed (clickjacking a same-origin
     // REMOVE/replace past the Origin check).
@@ -279,62 +298,67 @@ function keySetupEndpoint({ sourceRoot = defaultSourceRoot } = {}) {
           }
           const verdict = validateKeySetupUpdates(parsed);
           if (!verdict.ok) return respond(res, 400, { error: verdict.error });
-          // Neither a replace NOR a removal may touch an externally-supplied
-          // credential (shell env, Keychain, another workflow). This backs the
-          // UI's read-only "configured externally" state with a real contract —
-          // and it must guard replace too, not just remove: a clickjacked or
-          // scripted same-origin POST could otherwise overwrite the live value.
-          const inStore = storeValues();
-          for (const name of Object.keys(verdict.updates)) {
-            if (isExternallyManaged(name, inStore)) {
-              return respond(res, 409, {
-                error: `${name} is configured outside Provider Settings and can only be changed where it was set`,
-              });
+          // Everything from the ownership check through the write runs behind
+          // any save already in progress, so it reads the store that save
+          // produced (see serializeSave).
+          void serializeSave(() => {
+            // Neither a replace NOR a removal may touch an externally-supplied
+            // credential (shell env, Keychain, another workflow). This backs the
+            // UI's read-only "configured externally" state with a real contract —
+            // and it must guard replace too, not just remove: a clickjacked or
+            // scripted same-origin POST could otherwise overwrite the live value.
+            const inStore = storeValues();
+            for (const name of Object.keys(verdict.updates)) {
+              if (isExternallyManaged(name, inStore)) {
+                return respond(res, 409, {
+                  error: `${name} is configured outside Provider Settings and can only be changed where it was set`,
+                });
+              }
             }
-          }
-          try {
-            persistStore(upsertDotenvValues(readStore(), verdict.updates));
-          } catch (error) {
-            // The hardening failure carries its own honest, path-free message —
-            // "saved world-readable" must never be reported as a generic write
-            // error. Everything else returns a fixed message (a raw filesystem
-            // error can carry an absolute path; that stays in the server log).
-            if (
-              error?.code === 'GEV_HARDEN_FAILED' ||
-              error?.code === 'GEV_STORE_UNREADABLE'
-            ) {
+            try {
+              persistStore(upsertDotenvValues(readStore(), verdict.updates));
+            } catch (error) {
+              // The hardening failure carries its own honest, path-free message —
+              // "saved world-readable" must never be reported as a generic write
+              // error. Everything else returns a fixed message (a raw filesystem
+              // error can carry an absolute path; that stays in the server log).
+              if (
+                error?.code === 'GEV_HARDEN_FAILED' ||
+                error?.code === 'GEV_STORE_UNREADABLE'
+              ) {
+                return respond(res, 500, {
+                  error: `The key was not saved: ${error.message}`,
+                });
+              }
               return respond(res, 500, {
-                error: `The key was not saved: ${error.message}`,
+                error: `Could not write the ${storeName()} store`,
               });
             }
-            return respond(res, 500, {
-              error: `Could not write the ${storeName()} store`,
+            // Live for the server-side proxies immediately; the restart below is
+            // what re-injects the client-exposed defines (Google, Cesium ion).
+            // Removal sets '' rather than deleting: an empty value stays falsy
+            // through loadEnv after restart, matching the Pinokio launcher's own
+            // blank-field semantics.
+            for (const [name, value] of Object.entries(verdict.updates)) {
+              process.env[name] = value === null ? '' : value;
+            }
+            respond(res, 200, {
+              ok: true,
+              saved: Object.keys(verdict.updates),
+              status: providerStatus(),
+              restarting: true,
             });
-          }
-          // Live for the server-side proxies immediately; the restart below is
-          // what re-injects the client-exposed defines (Google, Cesium ion).
-          // Removal sets '' rather than deleting: an empty value stays falsy
-          // through loadEnv after restart, matching the Pinokio launcher's own
-          // blank-field semantics.
-          for (const [name, value] of Object.entries(verdict.updates)) {
-            process.env[name] = value === null ? '' : value;
-          }
-          respond(res, 200, {
-            ok: true,
-            saved: Object.keys(verdict.updates),
-            status: providerStatus(),
-            restarting: true,
+            // One deliberate restart, after the response has flushed. Vite's own
+            // .env watcher may fire too; a second queued restart is harmless.
+            setTimeout(() => {
+              server.restart().catch((error) => {
+                console.warn(
+                  '[KeySetup] Dev-server restart failed:',
+                  error?.message || error,
+                );
+              });
+            }, 250);
           });
-          // One deliberate restart, after the response has flushed. Vite's own
-          // .env watcher may fire too; a second queued restart is harmless.
-          setTimeout(() => {
-            server.restart().catch((error) => {
-              console.warn(
-                '[KeySetup] Dev-server restart failed:',
-                error?.message || error,
-              );
-            });
-          }, 250);
         });
       });
     },

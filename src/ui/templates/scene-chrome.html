@@ -55,6 +55,17 @@
   <!-- Toast notification -->
   <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
+  <!-- Manual share-link copy when the clipboard is unavailable (no secure
+       context, or a denied write). Shown by the share button; ESC closes. -->
+  <div id="share-fallback" role="dialog" aria-labelledby="share-fallback-title" hidden>
+    <p id="share-fallback-title" class="share-fallback-title" aria-live="polite">CLIPBOARD UNAVAILABLE · COPY THIS LINK</p>
+    <input id="share-fallback-url" class="share-fallback-url" type="text" readonly spellcheck="false" aria-label="Share link" data-share-fallback-url />
+    <div class="share-fallback-actions">
+      <button type="button" class="scene-btn" data-share-fallback-copy>COPY</button>
+      <button type="button" class="scene-btn" aria-label="Close share link" data-share-fallback-close>CLOSE</button>
+    </div>
+  </div>
+
   <!-- Safe frame guides for recording composition -->
   <div id="safe-frame-overlay">
     <div id="safe-frame-box"></div>

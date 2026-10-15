@@ -92,18 +92,20 @@ export function _renderCctvState(state) {
     this._cctvFocusBtn.disabled = !enabled || cameras.length === 0 || !activeId;
   }
 
-  if (this._cctvCoverageBtn) {
+  if (this._cctvCoverageMode) {
     // Tri-state (viewshed design §3b): off → on (wireframes) → viewshed
-    // (color-coded volumes). The click handler cycles; this renders.
+    // (color-coded volumes). The bindings select; this renders the radiogroup
+    // with a roving tabindex on the checked option.
     const mode = state?.coverageMode || (state?.showCoverage ? 'on' : 'off');
-    this._cctvCoverageBtn.classList.toggle('active', mode !== 'off');
-    this._cctvCoverageBtn.textContent =
-      mode === 'viewshed'
-        ? 'VIEWSHED ON'
-        : mode === 'on'
-          ? 'COVERAGE ON'
-          : 'COVERAGE OFF';
-    this._cctvCoverageBtn.disabled = !enabled;
+    for (const option of this._cctvCoverageMode.querySelectorAll(
+      '[data-coverage-mode]',
+    )) {
+      const checked = option.dataset.coverageMode === mode;
+      option.classList.toggle('active', checked);
+      option.setAttribute('aria-checked', String(checked));
+      option.tabIndex = checked ? 0 : -1;
+      option.disabled = !enabled;
+    }
   }
 
   if (this._cctvAutoHopBtn) {

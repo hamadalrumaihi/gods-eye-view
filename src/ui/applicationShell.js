@@ -20,6 +20,7 @@ import { LocalSdrControls } from './localSdrControls.js';
 import { LocationNavigation } from './locationNavigation.js';
 import { bindClearLayersControl } from './layers.js';
 import { bindCameraOrientationControls } from './cameraOrientationControls.js';
+import { createShareFallback } from './shareFallback.js';
 import { createMapSourceControls } from './mapSource.js';
 import { STYLES } from './effects.js';
 import { isHudLayout } from '../hudLayouts.js';
@@ -519,13 +520,16 @@ export class StyleManager extends ShellFacade {
         _scopeFeatherValue: this._scopeFeatherValue,
         _sharpenSliderValue: this._sharpenSliderValue,
         _detectionDensityValue: this._detectionDensityValue,
+        _resetPanelsBtn: this._resetPanelsBtn,
       },
       operations: {
         setStyle: (...args) => this.setStyle(...args),
+        resetPanelLayout: (...args) => this.resetPanelLayout(...args),
         _updateHudButtonState: (...args) => this._updateHudButtonState(...args),
         _syncShareState: (...args) => this._syncShareState(...args),
         _toggleOrbit: (...args) => this._toggleOrbit(...args),
         toggleCleanView: (...args) => this.toggleCleanView(...args),
+        setPanelCollapsed: (...args) => this.setPanelCollapsed(...args),
         _toggleCctvEnabled: (...args) => this._toggleCctvEnabled(...args),
         _setBloomEnabled: (...args) => this._setBloomEnabled(...args),
         _setBloomIntensity: (...args) => this._setBloomIntensity(...args),
@@ -941,7 +945,7 @@ export class StyleManager extends ShellFacade {
         _cctvCalReadout: this._cctvCalReadout,
         _cctvCalibResetBtn: this._cctvCalibResetBtn,
         _cctvCalibSaveBtn: this._cctvCalibSaveBtn,
-        _cctvCoverageBtn: this._cctvCoverageBtn,
+        _cctvCoverageMode: this._cctvCoverageMode,
         _cctvEnableBtn: this._cctvEnableBtn,
         _cctvFocusBtn: this._cctvFocusBtn,
         _cctvFrame: this._cctvFrame,
@@ -1050,6 +1054,15 @@ export class StyleManager extends ShellFacade {
   }
 
   /**
+   * Forget stored panel positions and collapsed states and return every panel
+   * to its markup default without a reload.
+   * @returns {void}
+   */
+  resetPanelLayout() {
+    return this._panelChrome.resetPanelLayout();
+  }
+
+  /**
    * Toggles "clean view" mode which hides all UI panels via a CSS body class.
    * @param {boolean} [forceEnabled] - Explicit on/off. Omit to toggle.
    * @returns {void}
@@ -1062,6 +1075,7 @@ export class StyleManager extends ShellFacade {
     document.body.classList.toggle('ui-clean-view', shouldEnable);
     if (this._cleanViewBtn) {
       this._cleanViewBtn.classList.toggle('active', shouldEnable);
+      this._cleanViewBtn.setAttribute('aria-pressed', String(shouldEnable));
     }
     this._scheduleLeftPanelLayout();
   }
@@ -1427,13 +1441,26 @@ export class StyleManager extends ShellFacade {
 
   /**
    * Wires the share button click to copy the current share link to the clipboard.
+   * When the clipboard is unavailable the link is offered in a popover instead.
    * @returns {void}
    */
   _initShareButton() {
+    this._shareFallback?.destroy();
+    this._shareFallback = createShareFallback({
+      root: this._shareFallbackRoot,
+      showToast: (message) => this._showToast(message),
+    });
     this._lifetime.listen(this._shareBtn, 'click', async () => {
       const success = await this.shareLinkManager.copyLink();
-      if (!this._disposed)
-        this._showToast(success ? 'Link copied!' : 'Copy failed');
+      if (this._disposed) return;
+      if (success) {
+        this._shareFallback.hide({ restoreFocus: false });
+        this._showToast('Link copied!');
+        return;
+      }
+      const url = this.shareLinkManager.buildShareUrl?.();
+      if (url) this._shareFallback.show(url);
+      else this._showToast('Copy failed');
     });
   }
 
@@ -1531,6 +1558,7 @@ export class StyleManager extends ShellFacade {
     this._displayBindings.destroy();
     this._mapSourceControls?.destroy();
     this._cameraOrientationControls?.destroy();
+    this._shareFallback?.destroy();
     this._clearLayersControl?.destroy();
     this._cctvControls?.destroy();
     this._radioControls?.destroy();

@@ -1,7 +1,32 @@
 /**
+ * Make everything beside a surface inert while it is open, so a modal dialog
+ * is modal for pointer, keyboard and assistive technology alike. Only nodes
+ * this call changed are restored, so overlapping surfaces never re-enable a
+ * sibling another owner disabled.
+ *
+ * @param {HTMLElement|null} root The open surface; its parent's other children become inert.
+ * @returns {() => void} Release function; harmless to call more than once.
+ */
+export function inertSiblings(root) {
+  const siblings = root?.parentNode?.children;
+  if (!siblings) return () => {};
+  const changed = [];
+  for (const sibling of Array.from(siblings)) {
+    if (sibling === root || sibling.inert === true) continue;
+    if (sibling.tagName === 'SCRIPT') continue;
+    sibling.inert = true;
+    changed.push(sibling);
+  }
+  return () => {
+    for (const sibling of changed.splice(0)) sibling.inert = false;
+  };
+}
+
+/**
  * Own capture-phase Escape and Tab handling while a surface is active.
  * The caller owns visibility, content, initial focus and dismissal policy.
- * This does not make the surface modal or make the rest of the page inert.
+ * This alone does not make the surface modal; a dialog pairs it with
+ * `inertSiblings` while it is open.
  *
  * @param {object} options
  * @param {HTMLElement} options.root Surface containing the keyboard controls.

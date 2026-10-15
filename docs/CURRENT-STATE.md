@@ -1,5 +1,143 @@
 # God's Eye View Current State
 
+## Audit quick wins — October 11, 2026
+
+**Layer `update()` return contract.** `false` from a layer's `update()` means
+"reject the lifecycle transition": an enabling layer reverts through
+`disable()` and a periodic tick publishes `refresh-failed`. It does not mean
+"the fetch failed". A layer whose source is unavailable returns `true` and
+exposes the failure through `getStats().error`, which the manager surfaces as
+`managerRefreshError` and the row shows as its refresh error. Earthquakes and
+Fire Perimeters now follow this, like Cyclones, so a USGS or NIFC outage no
+longer reverts the toggle. Only aborted, superseded or already-disabled updates
+return `false`. DEV builds `console.warn` the layer id when `update()` returns
+`false` while `getStats()` reports an error.
+
+**Hidden-tab polling.** `LayerLifecycle` accepts an optional `visibility`
+option (`{ isHidden(), subscribe(callback) → unsubscribe }`). `src/app/data.js`
+injects the browser document; the portable `./data/lifecycle` export never
+references `document`. While the host is hidden, manager-owned periodic ticks
+are skipped and each still-enabled layer runs exactly one catch-up refresh when
+the host is visible again. Explicit `refreshLayer()` calls are unaffected. A
+module may set `pollWhileHidden = true` to keep polling (Local ADS-B). The
+single subscription is released by `destroyAll()`. This sits beside the
+existing hidden-state render-loop suspension in `src/app/tools.js`.
+
+**Voice microphone hygiene.** The Realtime input owner mutes an open-mic
+session's outbound tracks while the tab is hidden (`microphoneMutedWhileHidden`)
+and restores them on return when the session is still live; push-to-talk keeps
+its held-key contract; a microphone acquired while hidden starts muted. A
+`pagehide` listener calls `stop({ preserveStatus: true })`, so a page restored
+from the back/forward cache can show its pre-unload voice status with no live
+session until the next user action. Both listeners bind in
+`bindPushToTalkShortcut()` and release in `detachBindings()`.
+
+**Debug handle diagnostics.** `window.__godsEyeView.diagnostics.errors()`
+returns the newest 200 uncaught errors and unhandled rejections as
+`{ at, kind, message, stack? }`; `clearErrors()` empties the buffer
+(`src/app/errorCapture.js`, `createErrorCapture({ target, limit })`). Only
+message and stack text is kept; payloads and request bodies are never recorded
+and credential-shaped query parameters in URLs are redacted.
+
+**Server reads are bounded.** Upstream calls in OpenSky (token and states),
+adsb.lol, CelesTrak, TomTom, FIRMS, adsbdb enrichment, the terrain chunk fetch,
+the Realtime token route and the HUD summary route go through `fetchBounded`
+(`server/providers/common/http.js`): one deadline covering headers and body, a
+hard byte cap, redirects refused. Caps: OpenSky 16 MB / 20 s, adsb.lol 16 MB /
+20 s, CelesTrak 8 MB, TomTom tile 8 MB, FIRMS CSV 64 MB per source and status
+64 KB, adsbdb 1 MB, terrain chunk 4 MB, Realtime token 1 MB / 30 s, HUD summary
+1 MB / 15 s, Places 1 MB / 10 s. `/api/adsblol/mil` answers a non-OK upstream
+with `{"error":"adsb.lol upstream unavailable"}` and the upstream status instead
+of relaying its body. Provider caches are bounded LRUs (`createLruCache`,
+`server/providers/common/cache.js`): adsbdb 5,000 routes and 5,000 aircraft with
+the same `{at,data}` disk shape, terrain 200,000 points with the same version-2
+disk file, and CelesTrak remembers a failed or unknown group for 60 s.
+
+**Google Places errors.** Both Places routes answer every upstream or transport
+failure with the fixed `Google Places request failed`; the upstream detail goes
+to the server log.
+
+**CCTV Street View fallback.** Street View is requested only for a camera id in
+the catalog, at its registered position; `heading`, `fov` and `pitch` query
+overrides are accepted only for registered ids and clamped to [0,360),
+[20,120] and [-40,20]. Frames are cached five minutes per camera and
+whole-degree pose (500-entry LRU). A cache miss passes the shared Google per-IP
+limiter; over the limit answers a sanitized `429` with `Retry-After: 5`. The
+body is read under the 16 MB frame cap with redirects refused. An unknown id
+goes straight to the synthetic placeholder.
+
+**Rate-limit defaults.** `GEV_RATELIMIT_OPENAI_PER_MIN` and
+`GEV_RATELIMIT_GOOGLE_PER_MIN` default to 30 and 120 requests per minute per IP
+when unset (the figures the Pinokio launcher already wrote); an explicit `0` or
+`off` disables a limiter; a positive integer sets it; anything else keeps the
+default. The Google window is one shared limiter for `/api/google/nearby-places`,
+`/api/google/text-search` and the Street View fallback.
+
+**Server hygiene.** `/api/realtime/debug-log` is installed by the development
+server only and requires `Content-Type: application/json` (415 otherwise).
+Provider Settings saves run through a per-process queue so concurrent saves of
+different keys both persist. `build/vite.js` denies the staged credential temp
+files (`**/.ENVIRONMENT.*.tmp`, `**/..env.*.tmp`). JSON responders touched in
+this batch send `X-Content-Type-Options: nosniff`.
+
+**Keyboard shortcuts.** The bubbling map shortcuts (`1`–`7`, `H`, `O`, `V`,
+`F`, `D`, `C`, `Esc`) ignore keys pressed with Ctrl, Cmd or Alt and held-key
+autorepeat, so browser chords such as Cmd/Ctrl+C, Cmd+D and Cmd+F are left to
+the browser; `contenteditable` regions keep native typing like form controls.
+`F` collapses and expands the DATA LAYERS panel through the panel chrome, so
+its header stays visible, instead of hiding the panel.
+
+**Share link fallback.** When `navigator.clipboard` is unavailable (a plain-http
+LAN visit) or the write is denied, the Share button offers the link in
+`#share-fallback`: a small dialog above the dock with the URL pre-selected in a
+read-only field, COPY (tries `document.execCommand('copy')`), CLOSE and Escape,
+which returns focus to the opener. `ShareLinkManager.buildShareUrl({ nowMs })`
+exposes the URL; `copyLink` keeps its boolean contract.
+
+**ADD KEY chip.** A Data Layers row whose provider key is missing shows an
+**ADD KEY** chip beside its toggle while Provider Settings exists (development
+server, loopback). The chip opens Provider Settings with that key's field
+focused (`keySetup.open({ focusKey })`); its `aria-label` names the layer and
+the key. The opener reaches the panel through
+`startApplicationChrome({ onSettings })` → `LayerPresentation.attachKeySetup`;
+a preview build or LAN visitor keeps the guidance text without the chip.
+
+**RESET PANELS.** The DISPLAY panel has a RESET PANELS control.
+`PanelPositionControls.resetStoredLayout()` removes every
+`godsEyeView.v*.panelCollapsed.*` and `godsEyeView.v*.panelPos.*` key and clears
+inline positions; `PanelChrome.resetPanelLayout()` re-applies each panel's
+markup default, remembered as `data-default-collapsed` on first restore, and
+toasts `Panel layout reset`. The DISPLAY panel stays open for the session.
+
+**CCTV coverage control.** COVERAGE is a three-option radiogroup
+(`#cctv-coverage-mode`: OFF / ON / VIEWSHED) with `aria-checked`, a roving
+tabindex and arrow/Home/End selection, bound to the `coverageMode` param. The
+cycling `#cctv-coverage-btn` is gone; `scripts/qa-camera-controls.mjs` selects
+each option directly.
+
+**Accessibility parity.** The seven `.style-btn` presets and `#hud-toggle`,
+`#clean-view-toggle`, `#bloom-toggle` and `#sharpen-toggle` carry `aria-pressed`
+kept in sync with `.active`. Entering Cockpit focuses `#cockpit-hud`
+(`tabindex="-1"`); leaving returns focus to `#cockpit-entry`, or to the map
+canvas when that control is hidden. The first-run launcher and Provider
+Settings are `aria-modal="true"` and make their sibling top-level containers
+`inert` while open (`inertSiblings` from `src/ui/surfaceKeyboard.js`), released
+on close and teardown. The viewport meta includes `viewport-fit=cover`, so the
+`env(safe-area-inset-*)` offsets in `responsive.css` and `cockpit.css` apply.
+
+**Tooling.** `npm test` discovers `*.test.mjs` under `src/`, `server/` and
+`scripts/`; `node scripts/run-unit-tests.mjs --filter <glob-or-substring>`
+(repeatable) and `--list` select files, and other arguments pass through to
+`node --test`; a filtered selection may omit the allocation probes. The Windows
+CI onboarding job selects its tests with `--filter`. Dependabot covers npm
+(weekly, minor and patch grouped) and GitHub Actions (monthly). `ws` is a
+runtime dependency because `vite preview` serves the AIS feed. The `src/ui.js`
+facade and the `src/data/transit.js`, `militaryAwareness.js` and `flowTiles.js`
+facades are removed, with the `./layers/transit/standalone` export;
+`./layers/transit` and `./application/layers` remain, and only the
+`server/providers/local.js` → `server/standalone/key-setup.js` import-direction
+exception is left.
+
 ## Cyber HUD — September 23, 2026
 
 Display > HUD > Layout includes Cyber, also available through the HUD voice
@@ -1386,7 +1524,7 @@ This is the current runtime/source-of-truth snapshot for the project.
 > for everything they describe; these landed after):
 >
 > - **"Never answered yet" is a THIRD state, distinct from empty (2026-08-23):**
->   `sourceState` in `src/data/militaryAwareness.js` treats a dependency that is
+>   `sourceState` in the awareness layer (`src/layers/awareness/`) treats a dependency that is
 >   busy AND has never produced an answer (`loading === true && !lastUpdate`) as
 >   unavailable, so the Contacts panel prints `?` and voice says "unknown". This
 >   is deliberately NOT "busy": a source that has answered once keeps its real
@@ -2825,7 +2963,7 @@ Historical planning documents may not match runtime behavior.
 ## Runtime Stack
 
 - Vite + CesiumJS app with Google Photorealistic 3D Tiles
-- Scene/HUD/style systems in `src/ui.js` and `src/hud.js`
+- Scene/HUD/style systems in `src/ui/` and `src/hud.js`
 - Layer management in `src/data/manager.js`
 - Map stack switching in `src/mapStackController.js`
 - Voice control in `src/voice/` (OpenAI Realtime over WebRTC)
@@ -3160,7 +3298,7 @@ refreshes. A 304 confirms contact without appending history. Missing vehicles
 are removed after two missed polls; reports older than ten minutes and feeds
 silent for five minutes are removed. Credits appear when the feed is used.
 
-`src/data/militaryAwareness.js` remains registered internally as the Contacts
+The awareness layer (`src/layers/awareness/`) remains registered internally as the Contacts
 coordinator, but it is not a user-visible Data Layers entry. Its visible entry
 point is the right-side `CONTEXT` chooser's `CONTACTS` mode.
 
@@ -3832,7 +3970,7 @@ and unreachable upstream (502/504) separately from road geometry.
   - **Analyst → track handoff carries a key, not just a label** (2026-08-21). `analyst_query` items include `icao24`/`mmsi` alongside the display `id`, and contact lookup uses the shared tiered ranking in `src/data/contactMatch.js`: hex exact → callsign exact → registration exact → callsign prefix → registration prefix → callsign substring → registration substring. The tiers keep an exact callsign ahead of a colliding registration regardless of feed order, and registrations compare separator-insensitively (`G-ABCD`/`GABCD`, `05-8152`/`058152`, `N123AB`/`N-123AB`).
   - **A typed command supersedes the turn it interrupts** (2026-08-21). `sendTextCommand` defers its `response.create` behind an active response instead of colliding with it, marks that response superseded so a late function call from it is refused rather than dispatched, and drops the old turn's queued follow-up. A refused call is still ANSWERED — a terminal `{ok:false, superseded:true}` `function_call_output` — because an unanswered `function_call` strands a pending call and deadlocks the model; the refusal creates no response of its own. A burst of typed commands coalesces into one response while keeping both conversation items.
   - **Subject reconciliation across satellite catalog rebuilds** (2026-08-21). A dense↔core toggle or TLE refresh clears and repopulates the catalog, so the published subject is re-resolved against the new satrec; a subject that did NOT survive releases the slot. The per-frame refresh cannot do this itself — `_getTrackedFramePosition` returns early once the satellite has no catalog entry — so the reconcile runs at rebuild completion. An empty catalog is a rebuild in flight, not a disappearance.
-  - **One aircraft-proximity engine** (2026-08-22). `collectAircraftProximityWindow` (`src/data/militaryAwareness.js`) is the single computation behind both the Contacts panel window and the voice analyst's entity-centred "how many nearby", so the panel readout and the spoken count for one centre are identical by construction. **Invariant: do not re-derive a proximity count anywhere else.** They diverged before because the panel read live billboard positions (20,000 cap) while the analyst used last-fix coordinates over a 2,000-record slice — 111 on screen, 15 spoken. Explicit regions and arbitrary points deliberately keep the general record engine. Entity-centred results carry `window: {engine:'contacts-window', centeredOn, radiusKm, flights, military, aircraft}`.
+  - **One aircraft-proximity engine** (2026-08-22). `collectAircraftProximityWindow` (`src/layers/awareness/queries.js`) is the single computation behind both the Contacts panel window and the voice analyst's entity-centred "how many nearby", so the panel readout and the spoken count for one centre are identical by construction. **Invariant: do not re-derive a proximity count anywhere else.** They diverged before because the panel read live billboard positions (20,000 cap) while the analyst used last-fix coordinates over a 2,000-record slice — 111 on screen, 15 spoken. Explicit regions and arbitrary points deliberately keep the general record engine. Entity-centred results carry `window: {engine:'contacts-window', centeredOn, radiusKm, flights, military, aircraft}`.
   - **Centre precedence for nearby asks**: explicit place in the question > Contacts subject (a selected non-contact entity never silently becomes the centre) > an entity the user names > the current view, said aloud. Contacts active with no subject uses the view rather than reading an empty panel.
   - **Contact-match ties break on hex ascending.** `track_entity` is a mutation fulfilling "follow that one", and the model's observed answer to a non-ok track result is to retry with guesses rather than ask, so the lookup always commits rather than returning an ambiguity. What it owes the caller is stability: hex is unique and always present, so the same query resolves to the same contact for as long as both are loaded.
 - **Visual grounding**: at `local` view scale with no structured identity, the client captures the Cesium canvas (≤1200px JPEG, black-frame detection, double-render for freshness) and sends it as `input_image` with a strict "do not invent labels" instruction.
@@ -3987,7 +4125,7 @@ are omitted rather than framing the wrong part of the globe.
 - **Grounded 3D handoff is terrain-validity gated (2026-08-23).** A ready civilian or military glTF does not own the visual until `groundSnap` (`src/data/groundSnap.js`) can answer with a MEASURED photoreal-surface height. On success the layer writes `height + the model's measured belly offset` before revealing the model. Cache movement is measured on the WGS84 surface, not across altitude, so a stationary contact keeps its snap through poll-time vertical-datum changes. Model existence or GPU readiness alone never suppresses the billboard floor, and ordinary zoom/style/deselect transitions preserve a valid snap cache. **Two states, and the difference is the whole design.** COLD — nothing has ever resolved for this icao (tiles still streaming on first sight, sample failure, backoff after a first miss): there is no evidence of where the ground is, `heightFor` returns null, the model stays hidden and the depth-test-free 2D billboard remains opaque and floored. WARM — a snap resolved and then a >`MOVE_INVALIDATE_M` (50 m) taxi move stopped it answering directly: the measurement is DEMOTED to a bounded last-known rather than deleted, and it keeps answering while the resample is outstanding, so a taxiing aircraft does not pop 3D→2D→3D across a 2–30 s retry backoff. The bound is `HELD_SNAP_MAX_DRIFT_M` = 250 m from the spot the value was measured at, past which the hold is dropped rather than stretched and the contact is COLD again. It is spatial with no timer beside it (ground under a contact that has not moved does not change; what invalidates the value is the contact MOVING) and deliberately a quarter of the billboard chain's `HELD_FLOOR_MAX_DRIFT_KM` — that hold only ever RAISES a sprite, while a held snap IS the model's placement, so its error shows in both directions. A fresh sample releases the hold, and so does a ground flip (which already calls `forget`). **A loading model is HIDDEN, never zero-scaled:** admission sets `show = false` (Cesium's default is `true`, and an unplaced primitive would claim the visual at the identity matrix), and ownership is `ready && show` — Cesium 1.138's `Model.update` has no `show` guard, so hiding a primitive costs its load nothing.
 - Commercial and military aircraft use the same high-level FLEET model regime: 2D billboards when zoomed out, optional glTF models when closer, controlled by the DISPLAY rail `3D` toggle and `Proximity` / `All` modes. Since 2026-08-16 (Hangar fleet) models are PER-CLASS: real CC-BY GLBs for light/bizjet/turboprop/widebody/helicopter/uav (`CLASS_MODEL_REAL` in `src/data/aircraftClass.js` — meters-baked, scale 1, per-model belly/radius; provenance in `public/models/README.md`), the shared `airplane.glb` for the remaining civilian classes, and the military layer maps weight classes (real GLBs / 747 heavies / `jet.glb` fastjets, per-model heading offsets, always flat amber). Textured civilians carry a HEAVY tint, not a light one: `MODEL_COLOR_BLEND_AMOUNT` is `0.94` in BOTH layers under Cesium's `ColorBlendMode.MIX`, so the class colour supplies 94% of the surface and the asset's own texture ~6%. The visual direction is clean light silhouettes with only a weak diffuse contribution from the approved textures, so liveries deliberately do NOT read. IR boost raises the blend to a full `1.0`. Under NVG/FLIR (map preset or Cockpit vision) models render unlit flat-white at full alpha and scene fog is disabled (fog otherwise blacks out distant models with the globe hidden); state restores on exit.
 - The DISPLAY-rail `3D` toggle is the user-facing activation path for both aircraft layers. Their small approved GLBs build their render resources without Cesium's frame-spread job queue, preventing continuous Photorealistic 3D Tiles streaming from starving model readiness; model caps, tracking, camera, and fallback billboards are unchanged.
-- **The `3D` toggle DEFAULTS ON in `proximity` on a first run.** Proximity is itself the budget — models appear only below `MODEL_ALT_CEIL_M` and only for the nearest `MODEL_MAX` in view — so the default costs nothing at globe scale, and `all` remains a deliberate opt-in. A fresh boot runs NO layer-state restoration (`LayerStateCoordinator.start()` returns early with neither a share payload nor stored state), so four independent initializers decide what a first-run operator sees and must agree: `booleanOption('models3d', 'e', true)` in `src/data/layerState.js`, `_models3dEnabled = true` in BOTH flight layers, `this._models3dEnabled = true` in `src/ui.js`, and the `active` / `visible` classes on `#models3d-toggle` / `#models3d-mode-row` in `index.html`. All four are pinned together in `src/data/layerState.test.mjs`. Explicit state still wins: because the codec omits default-valued options, `models3d: false` is now what travels in a link (`lo=…f.e.0`) and restores OFF at both aircraft layers. **Consequence for returning users:** a stored `gev:layer-state:v2` blob is a FULL options snapshot, so a session that wrote one before this change carries `models3d:false` and keeps 3D off until the operator flips it (or clears the key) — the durable snapshot is treated as the recipient's own state, by design.
+- **The `3D` toggle DEFAULTS ON in `proximity` on a first run.** Proximity is itself the budget — models appear only below `MODEL_ALT_CEIL_M` and only for the nearest `MODEL_MAX` in view — so the default costs nothing at globe scale, and `all` remains a deliberate opt-in. A fresh boot runs NO layer-state restoration (`LayerStateCoordinator.start()` returns early with neither a share payload nor stored state), so four independent initializers decide what a first-run operator sees and must agree: `booleanOption('models3d', 'e', true)` in `src/data/layerState.js`, `_models3dEnabled = true` in BOTH flight layers, `this._models3dEnabled = true` in `src/ui/aircraftDisplay.js`, and the `active` / `visible` classes on `#models3d-toggle` / `#models3d-mode-row` in `index.html`. All four are pinned together in `src/data/layerState.test.mjs`. Explicit state still wins: because the codec omits default-valued options, `models3d: false` is now what travels in a link (`lo=…f.e.0`) and restores OFF at both aircraft layers. **Consequence for returning users:** a stored `gev:layer-state:v2` blob is a FULL options snapshot, so a session that wrote one before this change carries `models3d:false` and keeps 3D off until the operator flips it (or clears the key) — the durable snapshot is treated as the recipient's own state, by design.
 - **Consequence of the flip on the recorded tracked/fleet inversion:** the 150–800 km band where surrounding contacts draw as models while the SELECTED one is still a glyph is now what an operator sees WITHOUT arming anything. The inversion itself is unchanged and still deliberate (see `src/data/trackedModelRegime.js`); only its reachability changed.
 - Civilian and military 2D aircraft use the established distance scale: `3×` near
   the camera and a `0.5×` floor from 8,000 km outward. A standard 20 px ambient
@@ -4074,7 +4212,7 @@ are omitted rather than framing the wrong part of the globe.
 - `/api/route` proxies bounded OSRM route requests for annotation routes, with profile allowlisting, distance caps, response caps, caching, and sanitized "no route found" errors.
 - Track endpoints: `/api/ais-live/track?mmsi=` (server-accumulated ring buffers; sub-route handled before the rows snapshot), `/api/opensky-track?icao24=` (OAuth, 60s cache, sanitized errors, independent OpenSky credit bucket), `/api/adsblol/trace?hex=` (60s cache, 5MB cap, ODbL attribution required in UI).
 - Realtime debug logs redact API keys, bearer tokens, client secrets, and image data URLs before writing to disk; request bodies are size-capped.
-- `/api/realtime/debug-log` enforces an always-on 120-per-client/400-global one-minute limiter (not the opt-in `GEV_RATELIMIT_OPENAI_PER_MIN` bucket the cost-bearing OpenAI routes share), appends asynchronously through a serialized queue, and rotates `realtime-conversations.jsonl` at 32 MB keeping one prior generation, so the sink is bounded at twice that regardless of session length. A malformed record answers 400 and a failed write 500, both with a fixed message.
+- `/api/realtime/debug-log` is installed by the development server only (not `vite preview`) and requires `Content-Type: application/json` (415 otherwise). It enforces an always-on 120-per-client/400-global one-minute limiter (not the `GEV_RATELIMIT_OPENAI_PER_MIN` bucket, default 30 per minute, that the cost-bearing OpenAI routes share), appends asynchronously through a serialized queue, and rotates `realtime-conversations.jsonl` at 32 MB keeping one prior generation, so the sink is bounded at twice that regardless of session length. A malformed record answers 400 and a failed write 500, both with a fixed message.
 
 ## UI/UX Runtime Defaults
 

@@ -40,7 +40,14 @@ test('duplicate, missing and extra metadata fail before application registration
 
 test('data setup seals the caller catalog before controls can restore and drains its exact instances', async (t) => {
   const previous = globalThis.document;
-  globalThis.document = { getElementById: () => null };
+  // The data manager subscribes to document visibility for its polling pause.
+  const listeners = new Set();
+  globalThis.document = {
+    getElementById: () => null,
+    addEventListener: (type, listener) => listeners.add(`${type}:${listener}`),
+    removeEventListener: (type, listener) =>
+      listeners.delete(`${type}:${listener}`),
+  };
   t.after(() => {
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
@@ -75,8 +82,10 @@ test('data setup seals the caller catalog before controls can restore and drains
   assert.deepEqual(attached, [['one', 'two']]);
   assert.deepEqual([...dataManager.layers.keys()], ['one', 'two']);
   assert.throws(() => dataManager.register({ id: 'late' }), /finalized/);
+  assert.equal(listeners.size, 1, 'one visibility subscription per manager');
   for (const release of releases.reverse()) await release();
   assert.equal(dataManager.layers.size, 0);
+  assert.equal(listeners.size, 0, 'disposal releases the visibility listener');
 });
 
 test('controls bind catalog instances rather than similarly named defaults', () => {

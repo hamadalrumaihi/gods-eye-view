@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFirePerimetersLayer } from './index.js';
+import { LayerLifecycle } from '../../data/lifecycle.js';
 
 function harness(
   source,
@@ -12,6 +13,7 @@ function harness(
       createdMs: 1757000000000,
       changedMs: 1757900000000,
     }),
+    start = true,
   } = {},
 ) {
   const sources = [];
@@ -67,10 +69,34 @@ function harness(
     inciwebPublications: { getPublication: publication },
     openExternal: (url) => opened.push(url),
   });
-  layer.init(viewer);
-  layer.enable(viewer);
+  if (start) {
+    layer.init(viewer);
+    layer.enable(viewer);
+  }
   return { layer, viewer, sources, overlay, clicks, owners, opened };
 }
+
+test('a failing NIFC fetch keeps the enabled layer on and reports the error', async () => {
+  const h = harness(
+    {
+      getSnapshot: async () => {
+        throw new Error('NIFC HTTP 503');
+      },
+    },
+    { start: false },
+  );
+  const manager = new LayerLifecycle(h.viewer);
+  manager.register(h.layer);
+  const changes = [];
+  manager.subscribe((change) => changes.push(change.type));
+  assert.equal(await manager.setEnabled('fire-perimeters', true), true);
+  assert.equal(manager.isEnabled('fire-perimeters'), true);
+  assert.equal(h.layer.getStats().error, 'NIFC HTTP 503');
+  assert.equal(h.layer.getStats().count, 0);
+  assert.equal(changes.includes('visibility-failed'), false);
+  await manager.destroyAll();
+  assert.equal(h.sources.length, 0);
+});
 
 const ring = [
   [-108.1, 35.2],

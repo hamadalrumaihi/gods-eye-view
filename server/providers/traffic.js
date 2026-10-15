@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
+import { fetchBounded } from './common/http.js';
 import {
   isValidTileCoord as isValidTomTomTile,
   utcDayKey as tomtomUtcDayKey,
@@ -48,6 +49,8 @@ export function tomtomProxy() {
   const DEFAULT_DAILY_BUDGET = 6000;
   const MEM_MAX_ENTRIES = 256;
   const UPSTREAM_TIMEOUT_MS = 15000;
+  /** A flow tile is tens of KB; the cap only bounds a misbehaving upstream. */
+  const TILE_MAX_BYTES = 8 * 1024 * 1024;
 
   /** @type {Map<string, {at:number, buf:Buffer}>} tile key `z/x/y` -> cached tile (kept past TTL for serve-stale). */
   const mem = new Map();
@@ -143,11 +146,14 @@ export function tomtomProxy() {
       'https://api.tomtom.com/traffic/map/4/tile/flow/relative/' +
       `${z}/${x}/${y}.pbf?key=${encodeURIComponent(process.env.TOMTOM_API_KEY)}`;
     recordUpstreamFetch(); // attempts count — upstream bills the request either way
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    const { response: res, body } = await fetchBounded(fetch, url, {
+      timeoutMs: UPSTREAM_TIMEOUT_MS,
+      maxBytes: TILE_MAX_BYTES,
+      as: 'bytes',
+      readErrorBody: false,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
+    const buf = Buffer.from(body);
     if (buf.length === 0) throw new Error('empty tile body');
     return buf;
   }

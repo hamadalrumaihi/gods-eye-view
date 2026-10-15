@@ -126,6 +126,18 @@ export class RealtimeFacade {
   set shortcutVisibilityHandler(value) {
     this._input.shortcutVisibilityHandler = value;
   }
+  get shortcutPageHideHandler() {
+    return this._input.shortcutPageHideHandler;
+  }
+  set shortcutPageHideHandler(value) {
+    this._input.shortcutPageHideHandler = value;
+  }
+  get microphoneMutedWhileHidden() {
+    return this._input.microphoneMutedWhileHidden;
+  }
+  set microphoneMutedWhileHidden(value) {
+    this._input.microphoneMutedWhileHidden = value;
+  }
   get voiceTier() {
     return this._cost.voiceTier;
   }

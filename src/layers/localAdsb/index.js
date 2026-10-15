@@ -692,6 +692,9 @@ export function createLocalAdsbLayer({
     source: LAYER_SOURCE,
     updateInterval: 0,
     statsRefreshInterval: LOCAL_ADSB_TICK_MS,
+    // The receiver is local hardware, not a remote service: keep decoding
+    // while the tab is hidden so the track picture is current on return.
+    pollWhileHidden: true,
     /** The shared receiver session, also driven by the Radio panel card. */
     receiver,
     /** Decoder-feed session; the Radio card shows its one-line summary. */

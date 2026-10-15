@@ -365,7 +365,10 @@ export function createFirePerimetersLayer({
           return false;
         console.warn('[Data:FirePerimeters] Fetch error:', e);
         _lastError = e?.message || 'Perimeter source unavailable';
-        return false;
+        // A failed fetch is a refresh error surfaced through getStats(), not a
+        // rejected lifecycle transition: returning false here would make the
+        // manager revert the toggle whenever NIFC is down.
+        return true;
       } finally {
         if (_request === request) _request = null;
       }

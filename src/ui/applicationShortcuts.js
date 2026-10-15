@@ -11,7 +11,8 @@ const STYLE_KEYS = Object.freeze({
 /**
  * Bind the application's existing bubbling keyboard shortcuts.
  * Capture-phase surfaces keep first refusal. The caller owns each action and
- * persistence; form controls keep native typing except for Escape.
+ * persistence; form controls and editable regions keep native typing except
+ * for Escape, and modified or repeated keys are left to the browser.
  * @param {object} options
  * @param {Document} options.documentRef Keyboard event target.
  * @param {HTMLElement} options.searchInput Additional editing target.
@@ -24,9 +25,13 @@ export function bindApplicationShortcuts({
   actions,
 }) {
   const onKeyDown = (event) => {
+    // Browser and OS chords (Cmd/Ctrl+C copy, Cmd+D bookmark, Cmd+F find) and
+    // held-key autorepeat must never toggle a layer or cycle a mode.
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     const isFormControl =
-      event.target?.matches?.('select, input, textarea') ||
-      event.target === searchInput;
+      event.target?.matches?.(
+        'select, input, textarea, [contenteditable=""], [contenteditable="true"]',
+      ) || event.target === searchInput;
     if (isFormControl && event.key !== 'Escape') return;
 
     if (STYLE_KEYS[event.key]) actions.setStyle(STYLE_KEYS[event.key]);
